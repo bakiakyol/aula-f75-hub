@@ -1,0 +1,5 @@
+# AULA F75 - give the logged-in user access to the keyboard's hidraw nodes
+# 2.4G dongle (3554:FA09), Bluetooth (3554:FA07), wired (258A:010C)
+KERNEL=="hidraw*", KERNELS=="*:3554:FA09.*", TAG+="uaccess"
+KERNEL=="hidraw*", KERNELS=="*:3554:FA07.*", TAG+="uaccess"
+KERNEL=="hidraw*", KERNELS=="*:258A:010C.*", TAG+="uaccess"
