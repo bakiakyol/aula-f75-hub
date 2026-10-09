@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aula-f75-hub"
+version = "0.1.0"
+description = "Linux configuration tool for the AULA F75 keyboard: lighting, per-key RGB, key remapping"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Baki Akyol" }]
+requires-python = ">=3.10"
+keywords = ["aula", "aula-f75", "keyboard", "rgb", "hidraw", "linux"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Hardware",
+    "Environment :: X11 Applications :: GTK",
+]
+
+[project.optional-dependencies]
+gui = ["PyGObject"]
+
+[project.scripts]
+aula = "aula.cli:main"
+
+[tool.setuptools]
+packages = ["aula"]

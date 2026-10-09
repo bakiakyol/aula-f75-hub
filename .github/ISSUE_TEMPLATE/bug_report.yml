@@ -1,0 +1,28 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: connection
+    attributes:
+      label: Connection
+      placeholder: 2.4G dongle / Bluetooth / cable
+    validations:
+      required: true
+  - type: textarea
+    id: devices
+    attributes:
+      label: Output of `./aula.sh devices` and `./aula.sh info`
+      render: text
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution and desktop
+      placeholder: Linux Mint 22.3 Cinnamon

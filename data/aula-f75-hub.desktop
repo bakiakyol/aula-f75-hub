@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=AULA F75
+GenericName=Keyboard settings
+Comment=Lighting, per-key colors and key remapping for the AULA F75
+Exec=aula gui
+Icon=input-keyboard
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=keyboard;rgb;aula;lighting;remap;

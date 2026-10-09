@@ -1,0 +1,26 @@
+name: Device / firmware report
+description: Report how the tool behaves on your AULA keyboard (other F75 versions, F87, F99, Bluetooth, …)
+labels: [device]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Keyboard model and version
+      placeholder: AULA F75 (tri-mode), F75 Pro, F99, …
+    validations:
+      required: true
+  - type: input
+    id: connection
+    attributes:
+      label: Connection used
+      placeholder: 2.4G dongle / Bluetooth / cable
+  - type: textarea
+    id: ids
+    attributes:
+      label: Output of `lsusb` and `./aula.sh devices`
+      render: text
+  - type: textarea
+    id: works
+    attributes:
+      label: What works and what doesn't
+      description: Effects, per-key colors, remapping, side light, knob…

@@ -722,7 +722,11 @@ class AulaWindow(Gtk.Window):
             return
         layer = int(self.remap_layer.get_active_id())
         fname = "cmd_41.hex" if layer == 0 else f"cmd_41_layer{layer}.hex"
-        with open(os.path.join(ORIGINAL_BACKUP, fname)) as f:
+        path = os.path.join(ORIGINAL_BACKUP, fname)
+        if not os.path.exists(path):
+            self.say("Factory keymap isn't available in this install (the backup/ folder is missing)")
+            return
+        with open(path) as f:
             entry = P.matrix_entry(bytes.fromhex(f.read().strip()), idx)
         self._write_entry(idx, layer, entry, f"{K.BY_INDEX.get(idx, idx)} restored")
 
@@ -771,7 +775,10 @@ class AulaWindow(Gtk.Window):
             self._restore(folder)
 
     def on_restore_original(self, _b):
-        if self._confirm("Put back the settings the keyboard had before this tool was first used?"):
+        if not os.path.isdir(ORIGINAL_BACKUP):
+            self.say("Factory settings aren't available in this install (the backup/ folder is missing)")
+            return
+        if self._confirm("Put back the factory settings of a stock AULA F75 (lighting, per-key colors, keymap)?"):
             self._restore(ORIGINAL_BACKUP)
 
     # ------------------------------------------------------------ status

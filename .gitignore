@@ -1,4 +1,7 @@
 __pycache__/
 *.pyc
+*.egg-info/
+build/
+dist/
 efekt-notlari.txt
 effect-notes.txt
