@@ -33,6 +33,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ./aula.sh keys                            # tuş adları
 ./aula.sh key-color esc=ff0000 w=00ff00   # tek tek tuş rengi (özel efekte geçer)
 ./aula.sh key-color --clear all=0010ff w=ff0000 a=ff0000 s=ff0000 d=ff0000
+./aula.sh preset synthwave                # hazır renk temasını yükle (isimsiz: listele)
 ./aula.sh remap capslock lctrl            # CapsLock -> Ctrl  (geri al: remap capslock capslock)
 ./aula.sh remap f1 esc -l 1               # Fn katmanına (katman 1) atama
 ./aula.sh backup ~/aula-yedek

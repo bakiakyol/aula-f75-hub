@@ -5,6 +5,7 @@ import os
 import sys
 
 from . import keymap as K
+from . import presets as T
 from . import protocol as P
 from .device import AulaError, Keyboard, find_devices
 
@@ -134,6 +135,22 @@ def cmd_key_color(kb: Keyboard, a) -> None:
     print(f"Sent {len(a.assignments)} color assignment(s) (effect: custom)")
 
 
+def cmd_preset(kb: Keyboard, a) -> None:
+    if a.name is None:
+        for p in T.PRESETS:
+            print(f"{p.name:12} {p.description}")
+        return
+    if a.name not in T.PRESET_BY_NAME:
+        raise AulaError(f"unknown preset: {a.name!r} (run 'aula preset' to list them)")
+    led = kb.get_led()
+    custom = P.EFFECT_BY_NAME["custom"].hw
+    if led.effect != custom:
+        led.effect = custom
+        kb.set_led(led)
+    kb.set_custom(P.custom_from_colors(T.render(T.PRESET_BY_NAME[a.name])))
+    print(f"Preset: {a.name}")
+
+
 def cmd_remap(kb: Keyboard, a) -> None:
     idx = K.key_index(a.key)
     target = a.target.lower()
@@ -241,6 +258,10 @@ def main(argv=None) -> int:
     s.add_argument("--clear", action="store_true", help="turn all other keys off first")
     s.set_defaults(f=cmd_key_color)
 
+    s = sp.add_parser("preset", help="load a built-in per-key color theme (no name: list them)")
+    s.add_argument("name", nargs="?")
+    s.set_defaults(f=cmd_preset)
+
     s = sp.add_parser("remap", help="remap a key")
     s.add_argument("key", help="physical key to change, e.g. capslock")
     s.add_argument("target", help="new function, e.g. lctrl, esc, f5, none")
@@ -262,7 +283,7 @@ def main(argv=None) -> int:
 
     a = p.parse_args(argv)
     try:
-        if getattr(a, "no_kb", False):
+        if getattr(a, "no_kb", False) or (a.command == "preset" and a.name is None):
             a.f(None, a)
         else:
             with Keyboard(a.device) as kb:

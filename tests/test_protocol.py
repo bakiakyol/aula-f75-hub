@@ -86,6 +86,18 @@ class CustomTableTests(unittest.TestCase):
         self.assertEqual(sum(raw), 3 * 0xFF)
 
 
+class PresetTests(unittest.TestCase):
+    def test_synthwave(self):
+        from aula import presets as T
+        c = T.render(T.PRESET_BY_NAME["synthwave"])
+        self.assertEqual(len(c), 80)                          # every key with a position
+        self.assertEqual(c[K.key_index("esc")], (0xFF, 0x50, 0x00))
+        self.assertEqual(c[K.key_index("w")], (0xFF, 0xFF, 0xFF))
+        r, g, b = c[K.key_index("grave")]                      # left edge: purple
+        self.assertTrue(r < 0x70 and g == 0 and b == 0xFF)
+        self.assertEqual(c[K.key_index("pgup")], (0x00, 0xD5, 0xFF))    # rightmost: cyan
+
+
 class MatrixTests(unittest.TestCase):
     def test_backup_matches_keymap(self):
         m = _backup("cmd_41.hex")

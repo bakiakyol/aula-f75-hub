@@ -34,6 +34,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ./aula.sh keys                            # list key names
 ./aula.sh key-color esc=ff0000 w=00ff00   # per-key colors (switches to the custom effect)
 ./aula.sh key-color --clear all=0010ff w=ff0000 a=ff0000 s=ff0000 d=ff0000
+./aula.sh preset synthwave                # load a built-in color theme (no name: list them)
 ./aula.sh remap capslock lctrl            # CapsLock -> Ctrl  (undo: remap capslock capslock)
 ./aula.sh remap f1 esc -l 1               # remap on the Fn layer (layer 1)
 ./aula.sh backup ~/aula-backup
