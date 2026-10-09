@@ -3,16 +3,19 @@
 Start with:  ./aula.sh gui   (or python3 -m aula gui)
 """
 
+import math
 import os
 import queue
 import threading
 
+import cairo
 import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("PangoCairo", "1.0")
 from gi.repository import Gdk, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 
+from . import animation as A  # noqa: E402
 from . import keymap as K  # noqa: E402
 from . import presets as T  # noqa: E402
 from . import protocol as P  # noqa: E402
@@ -20,6 +23,31 @@ from .cli import BACKUP  # noqa: E402
 from .device import AulaError, Keyboard  # noqa: E402
 
 CUSTOM_HW = P.EFFECT_BY_NAME["custom"].hw
+
+# The board is drawn as a lit object on a dark desk: light needs darkness to show.
+DESK = (0.063, 0.067, 0.086)       # #101116 night desk
+PLATE = (0.106, 0.114, 0.133)      # #1B1D22 graphite plate
+PLATE_EDGE = (0.17, 0.18, 0.21)
+CAP = (58, 61, 69)                 # #3A3D45 unlit keycap
+
+
+CSS = b"""
+.desk { background-color: #101116; }
+.desk label { color: #8b92a0; }
+.readout { font-family: "Ubuntu Sans Mono"; font-size: 9pt; letter-spacing: 1px; }
+.readout.value { color: #d7dae0; }
+.desk button {
+    background-image: none; background-color: #1b1d22; color: #d7dae0;
+    border: 1px solid #2b2e36; box-shadow: none; text-shadow: none; -gtk-icon-shadow: none;
+}
+.desk button:hover { background-color: #252830; }
+.desk button.swatch { padding: 3px; border-radius: 7px; }
+"""
+
+
+def _mix(a, b, f):
+    """Blend color a towards b by f (0..1), 0-255 channels."""
+    return tuple(round(x + (y - x) * f) for x, y in zip(a, b))
 KNOB_RECT = (605, 30, 630, 57)  # drawn top right, next to F12
 ORIGINAL_BACKUP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backup")
 
@@ -31,33 +59,31 @@ SWATCHES = [
 ]
 
 
-# Colors 0-6 as stored in the keyboard's palette (command 0x49)
-PALETTE = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
-           (255, 0, 255), (0, 255, 255), (255, 255, 255)]
-# Ends on violet, not magenta: a magenta right edge reads as "red again" next to blue.
-RAINBOW = T.Preset("rainbow", "", [(0.0, (255, 0, 0)), (0.17, (255, 128, 0)), (0.33, (255, 230, 0)),
-                                   (0.5, (0, 255, 0)), (0.67, (0, 220, 255)), (0.83, (0, 60, 255)),
-                                   (1.0, (140, 0, 255))])
-
-
-def effect_preview(led: P.LedConfig) -> tuple[dict[int, tuple] | None, str]:
-    """Static approximation of the running effect for the drawing, plus a caption."""
+def readout(led: P.LedConfig, selected: int) -> tuple[str, str]:
+    """Left/right text of the instrument strip under the board (real values only)."""
     hw = led.effect
     e = P.EFFECT_BY_HW.get(hw)
-    name = e.name if e else f"effect {hw}"
+    parts = [(e.name if e else f"effect {hw}").upper()]
     if hw == CUSTOM_HW:
-        return None, "Showing your custom key colors"
-    if not 1 <= hw <= P.LED_SLOTS:
-        return {}, f"{name}: no preview"
-    slot = led.slot(hw)
-    if e is not None and e.color and slot.color < len(PALETTE):
-        colors = {idx: PALETTE[slot.color] for idx, *_ in K.KEYS}
+        parts.append("YOUR KEY COLORS")
+    elif 1 <= hw <= P.LED_SLOTS:
+        slot = led.slot(hw)
+        if e is None or e.color:
+            parts.append(P.COLORS[slot.color].upper())
+        parts.append(f"BRIGHTNESS {slot.brightness}/9")
+        if e is None or e.speed:
+            parts.append(f"SPEED {slot.speed}/4")
+        if hw in A.REACTIVE:
+            parts.append("DEMO OF KEY PRESSES")
+        elif A.is_animated(led):
+            parts.append("APPROXIMATE PREVIEW")
+    if selected:
+        right = f"{selected} KEY{'S' if selected > 1 else ''} SELECTED"
+        if hw != CUSTOM_HW:
+            right += " · PAINTING SWITCHES TO CUSTOM"
     else:
-        colors = T.render(RAINBOW)
-    k = max(0.15, slot.brightness / 9)
-    colors = {i: tuple(round(v * k) for v in c) for i, c in colors.items()}
-    moving = "" if hw == 1 else " (animated on the keyboard)"
-    return colors, f"Preview: {name}{moving} – coloring keys switches to custom"
+        right = "CLICK KEYS TO PAINT · CTRL+CLICK ADDS"
+    return "  ·  ".join(parts), right
 
 
 def _key_rect(idx: int, rect: tuple) -> tuple:
@@ -130,7 +156,7 @@ class Worker:
 class KeyboardView(Gtk.DrawingArea):
     """Drawing of the board; click to select keys (Ctrl/Shift-click adds)."""
 
-    MARGIN = 12
+    MARGIN = 22
 
     def __init__(self, on_select):
         super().__init__()
@@ -162,37 +188,96 @@ class KeyboardView(Gtk.DrawingArea):
 
     def _draw(self, _w, cr):
         s, ox, oy = self._geometry()
-        cr.set_source_rgb(0.12, 0.12, 0.14)
-        self._rounded(cr, ox + 22 * s, oy + 22 * s, 616 * s, 249 * s, 10 * s)
-        cr.fill()
-        layout = PangoCairo.create_layout(cr)
-        font = Pango.FontDescription(f"Sans Bold {max(6.5, 7.0 * s):.1f}")
-        layout.set_font_description(font)
+        w_all, h_all = self.get_allocated_width(), self.get_allocated_height()
+        shown = self.preview if self.preview is not None else self.colors
+        knob = K.BY_NAME["knob"]
+
+        # desk and aluminium plate
+        cr.set_source_rgb(*DESK)
+        cr.paint()
+        self._rounded(cr, ox + 20 * s, oy + 20 * s, 620 * s, 253 * s, 12 * s)
+        cr.set_source_rgb(*PLATE)
+        cr.fill_preserve()
+        cr.set_source_rgb(*PLATE_EDGE)
+        cr.set_line_width(1)
+        cr.stroke()
+
+        keys = []
         for idx, _name, label, rect in K.KEYS:
             x1, y1, x2, y2 = _key_rect(idx, rect)
-            x, y, w, h = ox + x1 * s, oy + y1 * s, (x2 - x1) * s, (y2 - y1) * s
-            shown = self.preview if self.preview is not None else self.colors
-            r, g, b = shown.get(idx, (40, 40, 40))
-            cr.new_path()
-            if idx == K.BY_NAME["knob"]:
-                cr.arc(x + w / 2, y + h / 2, w / 2, 0, 6.2832)
-            else:
-                self._rounded(cr, x, y, w, h, 4 * s)
-            cr.set_source_rgb(r / 255, g / 255, b / 255)
+            keys.append((idx, label, ox + x1 * s, oy + y1 * s, (x2 - x1) * s, (y2 - y1) * s))
+
+        # light spilling from under each cap onto the plate (additive, like real LEDs)
+        cr.set_operator(cairo.OPERATOR_ADD)
+        for idx, _label, x, y, w, h in keys:
+            r, g, b = shown.get(idx, (0, 0, 0))
+            if idx == knob or r + g + b == 0:
+                continue
+            cx, cy, rad = x + w / 2, y + h / 2 + 2 * s, max(w, h) * 0.5 + 9 * s
+            grad = cairo.RadialGradient(cx, cy, min(w, h) * 0.3, cx, cy, rad)
+            grad.add_color_stop_rgba(0, r / 255, g / 255, b / 255, 0.55)
+            grad.add_color_stop_rgba(1, r / 255, g / 255, b / 255, 0)
+            cr.set_source(grad)
+            cr.rectangle(cx - rad, cy - rad, 2 * rad, 2 * rad)
+            cr.fill()
+        cr.set_operator(cairo.OPERATOR_OVER)
+
+        layout = PangoCairo.create_layout(cr)
+        layout.set_font_description(Pango.FontDescription(f"Nimbus Sans Narrow Bold {max(7.0, 8.0 * s):.1f}"))
+        for idx, label, x, y, w, h in keys:
+            if idx == knob:
+                self._draw_knob(cr, x, y, w, s)
+                continue
+            light = shown.get(idx, (0, 0, 0))
+            pressed = idx in self.selected
+            top = _mix(CAP, light, 0.78)
+            skirt = tuple(c * 0.55 for c in top)
+            dy = 1.5 * s if pressed else 0
+            # skirt (cap sides), then the top face inset towards the back
+            self._rounded(cr, x, y + dy, w, h - dy, 4 * s)
+            cr.set_source_rgb(*(c / 255 for c in skirt))
+            cr.fill()
+            tx, ty, tw, th = x + 2.5 * s, y + 1.2 * s + dy, w - 5 * s, h - (5.5 * s if not pressed else 4 * s) - dy
+            self._rounded(cr, tx, ty, tw, th, 3 * s)
+            cr.set_source_rgb(*(c / 255 for c in top))
             cr.fill_preserve()
-            if idx in self.selected:
+            if pressed:
                 cr.set_source_rgb(1, 1, 1)
-                cr.set_line_width(3 * s)
+                cr.set_line_width(max(1.5, 2 * s))
+                cr.stroke()
             else:
-                cr.set_source_rgb(0, 0, 0)
-                cr.set_line_width(1)
-            cr.stroke()
-            lum = 0.299 * r + 0.587 * g + 0.114 * b
-            cr.set_source_rgb(*((0, 0, 0) if lum > 140 else (1, 1, 1)))
+                cr.new_path()
+            lum = 0.299 * top[0] + 0.587 * top[1] + 0.114 * top[2]
+            cr.set_source_rgb(*((0.08, 0.08, 0.1) if lum > 150 else (0.95, 0.95, 0.96)))
             layout.set_text(label, -1)
-            tw, th = layout.get_pixel_size()
-            cr.move_to(x + (w - tw) / 2, y + (h - th) / 2)
+            lw, lh = layout.get_pixel_size()
+            cr.move_to(tx + (tw - lw) / 2, ty + (th - lh) / 2)
             PangoCairo.show_layout(cr, layout)
+
+    def _draw_knob(self, cr, x, y, w, s):
+        cx, cy, r = x + w / 2, y + w / 2, w / 2
+        cr.new_path()
+        grad = cairo.RadialGradient(cx - r * 0.35, cy - r * 0.45, r * 0.1, cx, cy, r)
+        grad.add_color_stop_rgb(0, 0.78, 0.80, 0.84)
+        grad.add_color_stop_rgb(1, 0.30, 0.31, 0.35)
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.set_source(grad)
+        cr.fill_preserve()
+        cr.set_source_rgb(*(c * 0.6 for c in (0.30, 0.31, 0.35)))
+        cr.set_line_width(1)
+        cr.stroke()
+        cr.set_line_width(max(1.0, 1.2 * s))            # knurling around the edge
+        cr.set_source_rgba(0, 0, 0, 0.35)
+        for i in range(24):
+            a = i * 2 * math.pi / 24
+            cr.move_to(cx + math.cos(a) * r * 0.82, cy + math.sin(a) * r * 0.82)
+            cr.line_to(cx + math.cos(a) * r * 0.98, cy + math.sin(a) * r * 0.98)
+        cr.stroke()
+        if K.BY_NAME["knob"] in self.selected:
+            cr.arc(cx, cy, r + 2 * s, 0, 2 * math.pi)
+            cr.set_source_rgb(1, 1, 1)
+            cr.set_line_width(max(1.5, 2 * s))
+            cr.stroke()
 
     def _click(self, _w, event):
         s, ox, oy = self._geometry()
@@ -235,10 +320,16 @@ class AulaWindow(Gtk.Window):
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.add(root)
 
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider,
+                                                 Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        desk = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        desk.get_style_context().add_class("desk")
         self.view = KeyboardView(self.on_selection)
-        root.pack_start(self.view, True, True, 0)
-        root.pack_start(self._color_bar(), False, False, 0)
-        root.pack_start(Gtk.Separator(), False, False, 0)
+        desk.pack_start(self.view, True, True, 0)
+        desk.pack_start(self._desk_tools(), False, False, 0)
+        root.pack_start(desk, True, True, 0)
 
         stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         stack.add_titled(self._page_lighting(), "lighting", "Lighting")
@@ -256,6 +347,8 @@ class AulaWindow(Gtk.Window):
         self.status.get_style_context().add_class("dim-label")
         root.pack_start(self.status, False, False, 0)
 
+        self.t0 = GLib.get_monotonic_time()
+        GLib.timeout_add(50, self.tick)
         self.connect("destroy", Gtk.main_quit)
         self.load()
 
@@ -269,31 +362,59 @@ class AulaWindow(Gtk.Window):
     def _label(text):
         return Gtk.Label(label=text, xalign=1)
 
-    def _color_bar(self):
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin=8)
-        self.caption = Gtk.Label(xalign=0.5)
-        self.caption.get_style_context().add_class("dim-label")
-        outer.pack_start(self.caption, False, False, 0)
+    def _desk_tools(self):
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_start=20,
+                        margin_end=20, margin_bottom=14)
+        strip = Gtk.Box(spacing=12)
+        self.readout_left = Gtk.Label(xalign=0)
+        self.readout_right = Gtk.Label(xalign=1)
+        for lbl in (self.readout_left, self.readout_right):
+            lbl.get_style_context().add_class("readout")
+        self.readout_left.get_style_context().add_class("value")
+        strip.pack_start(self.readout_left, True, True, 0)
+        strip.pack_end(self.readout_right, False, False, 0)
+        outer.pack_start(strip, False, False, 0)
+
         box = Gtk.Box(spacing=6)
         outer.pack_start(box, False, False, 0)
-        box.pack_start(Gtk.Label(label="Selected keys:"), False, False, 0)
         for name, rgb in SWATCHES:
             btn = Gtk.Button()
-            btn.set_tooltip_text(name)
+            btn.get_style_context().add_class("swatch")
+            btn.set_tooltip_text(f"Paint selected keys {name.lower()}")
             area = Gtk.DrawingArea()
-            area.set_size_request(22, 16)
-            area.connect("draw", lambda _w, cr, c=rgb: (cr.set_source_rgb(*(v / 255 for v in c)), cr.paint()))
+            area.set_size_request(24, 18)
+            area.connect("draw", self._draw_swatch, rgb)
             btn.add(area)
             btn.connect("clicked", lambda _b, c=rgb: self.paint_selection(c))
             box.pack_start(btn, False, False, 0)
-        picker = Gtk.ColorButton()
-        picker.set_tooltip_text("Custom color")
-        picker.connect("color-set", self.on_color_picked)
+        picker = Gtk.Button(label="Custom color…")
+        picker.set_tooltip_text("Paint selected keys with any color")
+        picker.connect("clicked", self.on_color_picked)
         box.pack_start(picker, False, False, 0)
+        clear = Gtk.Button(label="Clear selection")
+        clear.connect("clicked", self.on_clear_selection)
+        box.pack_end(clear, False, False, 0)
         sel_all = Gtk.Button(label="Select all")
         sel_all.connect("clicked", self.on_select_all)
         box.pack_end(sel_all, False, False, 0)
         return outer
+
+    @staticmethod
+    def _draw_swatch(_w, cr, rgb):
+        w, h = _w.get_allocated_width(), _w.get_allocated_height()
+        KeyboardView._rounded(cr, 0, 0, w, h, 4)
+        if rgb == (0, 0, 0):                          # "off": an unlit cap with a slash
+            cr.set_source_rgb(*(c / 255 for c in CAP))
+            cr.fill()
+            cr.set_source_rgb(0.55, 0.57, 0.63)
+            cr.set_line_width(1.5)
+            cr.move_to(4, h - 4)
+            cr.line_to(w - 4, 4)
+            cr.stroke()
+        else:
+            cr.set_source_rgb(*(c / 255 for c in rgb))
+            cr.fill()
+        return True
 
     def _page_lighting(self):
         g = self._grid()
@@ -430,9 +551,25 @@ class AulaWindow(Gtk.Window):
         self.os_combo.set_active_id(str(led.os_mode))
         self.winlock.set_active(led.win_lock)
         self.updating = False
-        self.view.preview, caption = effect_preview(led)
-        self.caption.set_text(caption)
-        self.view.queue_draw()
+        self.update_readout()
+        self.tick()
+
+    def update_readout(self):
+        if self.led is not None:
+            left, right = readout(self.led, len(self.view.selected))
+            self.readout_left.set_text(left)
+            self.readout_right.set_text(right)
+
+    def tick(self):
+        """Redraw the effect preview; runs every 50 ms."""
+        if self.led is not None:
+            animated = A.is_animated(self.led)
+            if animated or self.view.preview is not None or self.led.effect == 1:
+                motion = Gtk.Settings.get_default().get_property("gtk-enable-animations")
+                t = (GLib.get_monotonic_time() - self.t0) / 1e6 if motion else 1.0
+                self.view.preview = A.frame(self.led, t)
+                self.view.queue_draw()
+        return True
 
     # ---------------------------------------------------------- lighting
     def on_led_widget(self, *_args):
@@ -475,7 +612,7 @@ class AulaWindow(Gtk.Window):
         if self.led is None:
             return
         if not self.view.selected:
-            self.say("Select keys on the drawing first (Ctrl+click to pick several)")
+            self.say("Select keys on the board first (Ctrl+click adds more)")
             return
         for idx in self.view.selected:
             self.view.colors[idx] = rgb
@@ -483,9 +620,13 @@ class AulaWindow(Gtk.Window):
         self.ensure_custom_effect()
         self.send_custom(f"Colored {len(self.view.selected)} key(s)")
 
-    def on_color_picked(self, button):
-        c = button.get_rgba()
-        self.paint_selection((round(c.red * 255), round(c.green * 255), round(c.blue * 255)))
+    def on_color_picked(self, _button):
+        dlg = Gtk.ColorChooserDialog(title="Paint selected keys", transient_for=self)
+        dlg.set_use_alpha(False)
+        if dlg.run() == Gtk.ResponseType.OK:
+            c = dlg.get_rgba()
+            self.paint_selection((round(c.red * 255), round(c.green * 255), round(c.blue * 255)))
+        dlg.destroy()
 
     def on_select_all(self, _b):
         self.view.selected = {idx for idx, *_ in K.KEYS if idx != K.BY_NAME["knob"]}
@@ -501,7 +642,13 @@ class AulaWindow(Gtk.Window):
         self.send_custom(f"Theme: {preset.name}")
 
     # ------------------------------------------------------------- remap
+    def on_clear_selection(self, _b):
+        self.view.selected.clear()
+        self.view.queue_draw()
+        self.on_selection()
+
     def on_selection(self):
+        self.update_readout()
         sel = self.view.selected
         if len(sel) == 1:
             idx = next(iter(sel))

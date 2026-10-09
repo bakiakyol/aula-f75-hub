@@ -182,7 +182,8 @@ class Keyboard:
                 parts[rep.index] = rep.data
                 if len(parts) == total:
                     return b"".join(parts[i] for i in range(total))
-        raise AulaError(f"read 0x{rcmd:02x} incomplete (missing packets)")
+        raise AulaError("the keyboard didn't answer. It may be asleep: press any key "
+                        "to wake it, then try again")
 
     def write(self, cmd: int, data: bytes, sub: int = 0, retries: int = 3) -> None:
         """Write data in 14-byte packets; the keyboard echoes each one back as an ack."""
