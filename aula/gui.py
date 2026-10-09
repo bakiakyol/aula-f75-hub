@@ -189,54 +189,86 @@ class KeyboardView(Gtk.DrawingArea):
         shown = self.preview if self.preview is not None else self.colors
         knob = K.BY_NAME["knob"]
 
-        # desk and aluminium plate
         cr.set_source_rgb(*DESK)
         cr.paint()
-        self._rounded(cr, ox + 20 * s, oy + 20 * s, 620 * s, 253 * s, 12 * s)
-        cr.set_source_rgb(*PLATE)
-        cr.fill_preserve()
-        cr.set_source_rgb(*PLATE_EDGE)
+        # case: soft vertical gradient with a lit top edge
+        cx, cy, cw, ch = ox + 16 * s, oy + 16 * s, 628 * s, 261 * s
+        self._rounded(cr, cx, cy + 4 * s, cw, ch, 16 * s)         # case shadow on the desk
+        cr.set_source_rgba(0, 0, 0, 0.5)
+        cr.fill()
+        case = cairo.LinearGradient(0, cy, 0, cy + ch)
+        case.add_color_stop_rgb(0, 0.17, 0.18, 0.21)
+        case.add_color_stop_rgb(1, 0.10, 0.105, 0.12)
+        self._rounded(cr, cx, cy, cw, ch, 16 * s)
+        cr.set_source(case)
+        cr.fill()
+        cr.move_to(cx + 16 * s, cy + 0.8)
+        cr.line_to(cx + cw - 16 * s, cy + 0.8)
+        cr.set_source_rgba(1, 1, 1, 0.12)
         cr.set_line_width(1)
         cr.stroke()
+        # recessed plate the keys sit in
+        px, py, pw, ph = ox + 24 * s, oy + 24 * s, 612 * s, 245 * s
+        self._rounded(cr, px, py, pw, ph, 9 * s)
+        cr.set_source_rgb(0.045, 0.048, 0.058)
+        cr.fill()
 
         layout = PangoCairo.create_layout(cr)
-        layout.set_font_description(Pango.FontDescription(f"Nimbus Sans Narrow Bold {max(7.0, 8.0 * s):.1f}"))
+        layout.set_font_description(Pango.FontDescription(f"Ubuntu Sans Medium {max(6.5, 7.2 * s):.1f}"))
         for idx, _name, label, rect in K.KEYS:
             x1, y1, x2, y2 = _key_rect(idx, rect)
             x, y, w, h = ox + x1 * s, oy + y1 * s, (x2 - x1) * s, (y2 - y1) * s
             if idx == knob:
                 self._draw_knob(cr, x, y, w, s)
                 continue
-            color = shown.get(idx, (0, 0, 0))
-            if sum(color) < 60:                        # unlit: show the bare cap
-                color = UNLIT
-            rad = 4.5 * s
-            # soft shadow under the cap
-            self._rounded(cr, x, y + 2 * s, w, h, rad)
-            cr.set_source_rgba(0, 0, 0, 0.45)
-            cr.fill()
-            # cap in its true color, with a thin darker rim
+            r, g, b = (c / 255 for c in shown.get(idx, (0, 0, 0)))
+            lit = r + g + b > 0.1
+            rad = 4 * s
+            if lit:
+                # light leaking from under the cap: a crisp rim, strongest at the bottom edge
+                self._rounded(cr, x - 1.6 * s, y - 0.6 * s, w + 3.2 * s, h + 3.0 * s, rad + 1.6 * s)
+                cr.set_source_rgba(r, g, b, 0.28)
+                cr.fill()
+                self._rounded(cr, x - 0.8 * s, y + 0.4 * s, w + 1.6 * s, h + 1.6 * s, rad + 0.8 * s)
+                cr.set_source_rgba(r, g, b, 0.85)
+                cr.fill()
+            # dark matte cap, slightly convex, faintly tinted by the light underneath
+            tint = 0.22 if lit else 0
+            cap = cairo.LinearGradient(0, y, 0, y + h)
+            cap.add_color_stop_rgb(0, *(0.20 + (c - 0.20) * tint for c in (r, g, b)))
+            cap.add_color_stop_rgb(1, *(0.115 + (c - 0.115) * tint * 0.6 for c in (r, g, b)))
             self._rounded(cr, x, y, w, h, rad)
-            cr.set_source_rgb(*(c / 255 for c in color))
-            cr.fill_preserve()
-            cr.set_source_rgba(0, 0, 0, 0.35)
+            cr.set_source(cap)
+            cr.fill()
+            # dished top face
+            self._rounded(cr, x + 2.2 * s, y + 1.4 * s, w - 4.4 * s, h - 5 * s, rad * 0.8)
+            cr.set_source_rgba(1, 1, 1, 0.035)
+            cr.fill()
+            cr.move_to(x + rad, y + 0.8)
+            cr.line_to(x + w - rad, y + 0.8)
+            cr.set_source_rgba(1, 1, 1, 0.14)
             cr.set_line_width(1)
             cr.stroke()
-            # faint highlight along the top edge
-            cr.move_to(x + rad, y + 1.2)
-            cr.line_to(x + w - rad, y + 1.2)
-            cr.set_source_rgba(1, 1, 1, 0.22)
-            cr.stroke()
             if idx in self.selected:
-                self._rounded(cr, x - 1.5 * s, y - 1.5 * s, w + 3 * s, h + 3 * s, rad + 1.5 * s)
+                self._rounded(cr, x - 2.5 * s, y - 2.5 * s, w + 5 * s, h + 5 * s, rad + 2.5 * s)
                 cr.set_source_rgb(1, 1, 1)
-                cr.set_line_width(max(1.5, 2 * s))
+                cr.set_line_width(max(1.5, 1.8 * s))
                 cr.stroke()
-            lum = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
-            cr.set_source_rgb(*((0.08, 0.08, 0.1) if lum > 150 else (0.97, 0.97, 0.98)))
+            # legend glows in the key's color (shine-through)
+            if lit:
+                legend = tuple(min(1.0, c * 0.6 + 0.4) for c in (r, g, b))
+            else:
+                legend = (0.42, 0.44, 0.50)
             layout.set_text(label, -1)
             lw, lh = layout.get_pixel_size()
-            cr.move_to(x + (w - lw) / 2, y + (h - lh) / 2)
+            lx, ly = x + (w - lw) / 2, y + (h - 1.5 * s - lh) / 2
+            if lit:
+                cr.set_source_rgba(*legend, 0.35)              # faint halo behind the glyphs
+                for dx, dy in ((-0.8, 0), (0.8, 0), (0, -0.8), (0, 0.8)):
+                    cr.move_to(lx + dx, ly + dy)
+                    PangoCairo.show_layout(cr, layout)
+            cr.set_source_rgb(*legend)
+            cr.move_to(lx, ly)
             PangoCairo.show_layout(cr, layout)
 
     def _draw_knob(self, cr, x, y, w, s):
