@@ -29,6 +29,7 @@ DESK = (0.063, 0.067, 0.086)       # #101116 night desk
 PLATE = (0.106, 0.114, 0.133)      # #1B1D22 graphite plate
 PLATE_EDGE = (0.17, 0.18, 0.21)
 CAP = (58, 61, 69)                 # #3A3D45 unlit keycap
+UNLIT = (44, 47, 54)               # how an unlit key is drawn on the board
 
 
 CSS = b"""
@@ -45,9 +46,6 @@ CSS = b"""
 """
 
 
-def _mix(a, b, f):
-    """Blend color a towards b by f (0..1), 0-255 channels."""
-    return tuple(round(x + (y - x) * f) for x, y in zip(a, b))
 KNOB_RECT = (605, 30, 630, 57)  # drawn top right, next to F12
 ORIGINAL_BACKUP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backup")
 
@@ -78,7 +76,7 @@ def readout(led: P.LedConfig, selected: int) -> tuple[str, str]:
         elif A.is_animated(led):
             parts.append("APPROXIMATE PREVIEW")
     if selected:
-        right = f"{selected} KEY{'S' if selected > 1 else ''} SELECTED"
+        right = f"{selected} SELECTED"
         if hw != CUSTOM_HW:
             right += " · PAINTING SWITCHES TO CUSTOM"
     else:
@@ -188,7 +186,6 @@ class KeyboardView(Gtk.DrawingArea):
 
     def _draw(self, _w, cr):
         s, ox, oy = self._geometry()
-        w_all, h_all = self.get_allocated_width(), self.get_allocated_height()
         shown = self.preview if self.preview is not None else self.colors
         knob = K.BY_NAME["knob"]
 
@@ -202,56 +199,44 @@ class KeyboardView(Gtk.DrawingArea):
         cr.set_line_width(1)
         cr.stroke()
 
-        keys = []
-        for idx, _name, label, rect in K.KEYS:
-            x1, y1, x2, y2 = _key_rect(idx, rect)
-            keys.append((idx, label, ox + x1 * s, oy + y1 * s, (x2 - x1) * s, (y2 - y1) * s))
-
-        # light spilling from under each cap onto the plate (additive, like real LEDs)
-        cr.set_operator(cairo.OPERATOR_ADD)
-        for idx, _label, x, y, w, h in keys:
-            r, g, b = shown.get(idx, (0, 0, 0))
-            if idx == knob or r + g + b == 0:
-                continue
-            cx, cy, rad = x + w / 2, y + h / 2 + 2 * s, max(w, h) * 0.5 + 9 * s
-            grad = cairo.RadialGradient(cx, cy, min(w, h) * 0.3, cx, cy, rad)
-            grad.add_color_stop_rgba(0, r / 255, g / 255, b / 255, 0.55)
-            grad.add_color_stop_rgba(1, r / 255, g / 255, b / 255, 0)
-            cr.set_source(grad)
-            cr.rectangle(cx - rad, cy - rad, 2 * rad, 2 * rad)
-            cr.fill()
-        cr.set_operator(cairo.OPERATOR_OVER)
-
         layout = PangoCairo.create_layout(cr)
         layout.set_font_description(Pango.FontDescription(f"Nimbus Sans Narrow Bold {max(7.0, 8.0 * s):.1f}"))
-        for idx, label, x, y, w, h in keys:
+        for idx, _name, label, rect in K.KEYS:
+            x1, y1, x2, y2 = _key_rect(idx, rect)
+            x, y, w, h = ox + x1 * s, oy + y1 * s, (x2 - x1) * s, (y2 - y1) * s
             if idx == knob:
                 self._draw_knob(cr, x, y, w, s)
                 continue
-            light = shown.get(idx, (0, 0, 0))
-            pressed = idx in self.selected
-            top = _mix(CAP, light, 0.78)
-            skirt = tuple(c * 0.55 for c in top)
-            dy = 1.5 * s if pressed else 0
-            # skirt (cap sides), then the top face inset towards the back
-            self._rounded(cr, x, y + dy, w, h - dy, 4 * s)
-            cr.set_source_rgb(*(c / 255 for c in skirt))
+            color = shown.get(idx, (0, 0, 0))
+            if sum(color) < 60:                        # unlit: show the bare cap
+                color = UNLIT
+            rad = 4.5 * s
+            # soft shadow under the cap
+            self._rounded(cr, x, y + 2 * s, w, h, rad)
+            cr.set_source_rgba(0, 0, 0, 0.45)
             cr.fill()
-            tx, ty, tw, th = x + 2.5 * s, y + 1.2 * s + dy, w - 5 * s, h - (5.5 * s if not pressed else 4 * s) - dy
-            self._rounded(cr, tx, ty, tw, th, 3 * s)
-            cr.set_source_rgb(*(c / 255 for c in top))
+            # cap in its true color, with a thin darker rim
+            self._rounded(cr, x, y, w, h, rad)
+            cr.set_source_rgb(*(c / 255 for c in color))
             cr.fill_preserve()
-            if pressed:
+            cr.set_source_rgba(0, 0, 0, 0.35)
+            cr.set_line_width(1)
+            cr.stroke()
+            # faint highlight along the top edge
+            cr.move_to(x + rad, y + 1.2)
+            cr.line_to(x + w - rad, y + 1.2)
+            cr.set_source_rgba(1, 1, 1, 0.22)
+            cr.stroke()
+            if idx in self.selected:
+                self._rounded(cr, x - 1.5 * s, y - 1.5 * s, w + 3 * s, h + 3 * s, rad + 1.5 * s)
                 cr.set_source_rgb(1, 1, 1)
                 cr.set_line_width(max(1.5, 2 * s))
                 cr.stroke()
-            else:
-                cr.new_path()
-            lum = 0.299 * top[0] + 0.587 * top[1] + 0.114 * top[2]
-            cr.set_source_rgb(*((0.08, 0.08, 0.1) if lum > 150 else (0.95, 0.95, 0.96)))
+            lum = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
+            cr.set_source_rgb(*((0.08, 0.08, 0.1) if lum > 150 else (0.97, 0.97, 0.98)))
             layout.set_text(label, -1)
             lw, lh = layout.get_pixel_size()
-            cr.move_to(tx + (tw - lw) / 2, ty + (th - lh) / 2)
+            cr.move_to(x + (w - lw) / 2, y + (h - lh) / 2)
             PangoCairo.show_layout(cr, layout)
 
     def _draw_knob(self, cr, x, y, w, s):
@@ -366,7 +351,7 @@ class AulaWindow(Gtk.Window):
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_start=20,
                         margin_end=20, margin_bottom=14)
         strip = Gtk.Box(spacing=12)
-        self.readout_left = Gtk.Label(xalign=0)
+        self.readout_left = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
         self.readout_right = Gtk.Label(xalign=1)
         for lbl in (self.readout_left, self.readout_right):
             lbl.get_style_context().add_class("readout")
