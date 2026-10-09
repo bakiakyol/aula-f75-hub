@@ -22,6 +22,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ## Usage
 
 ```bash
+./aula.sh gui                             # graphical interface (GTK 3, preinstalled on Linux Mint)
 ./aula.sh devices                         # find the keyboard
 ./aula.sh info                            # current effect / brightness / speed / color
 ./aula.sh effects                         # list effects and colors

@@ -207,6 +207,11 @@ def cmd_raw_read(kb: Keyboard, a) -> None:
     print(f"{len(data)} bytes:", data.hex(" "))
 
 
+def cmd_gui(_kb, a) -> None:
+    from .gui import main as gui_main  # GTK is only needed for the GUI
+    gui_main()
+
+
 def cmd_devices(_kb, a) -> None:
     devs = find_devices()
     if not devs:
@@ -221,6 +226,7 @@ def main(argv=None) -> int:
     p.add_argument("--device", help="hidraw path (e.g. /dev/hidraw2); auto-detected if omitted")
     sp = p.add_subparsers(dest="command", required=True)
 
+    sp.add_parser("gui", help="open the graphical interface").set_defaults(f=cmd_gui, no_kb=True)
     sp.add_parser("devices", help="list connected keyboards").set_defaults(f=cmd_devices, no_kb=True)
     sp.add_parser("info", help="show current lighting settings").set_defaults(f=cmd_info)
     sp.add_parser("effects", help="list effects and colors").set_defaults(f=cmd_effects, no_kb=True)

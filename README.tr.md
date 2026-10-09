@@ -21,6 +21,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ## Kullanım
 
 ```bash
+./aula.sh gui                             # grafik arayüz (GTK 3, Linux Mint'te hazır kurulu)
 ./aula.sh devices                         # klavyeyi bul
 ./aula.sh info                            # şu anki efekt / parlaklık / hız / renk
 ./aula.sh effects                         # efekt ve renk listesi
