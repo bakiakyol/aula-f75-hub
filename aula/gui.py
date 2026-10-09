@@ -34,8 +34,10 @@ SWATCHES = [
 # Colors 0-6 as stored in the keyboard's palette (command 0x49)
 PALETTE = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
            (255, 0, 255), (0, 255, 255), (255, 255, 255)]
-RAINBOW = T.Preset("rainbow", "", [(0.0, (255, 0, 0)), (0.2, (255, 160, 0)), (0.4, (0, 255, 0)),
-                                   (0.6, (0, 200, 255)), (0.8, (0, 0, 255)), (1.0, (255, 0, 255))])
+# Ends on violet, not magenta: a magenta right edge reads as "red again" next to blue.
+RAINBOW = T.Preset("rainbow", "", [(0.0, (255, 0, 0)), (0.17, (255, 128, 0)), (0.33, (255, 230, 0)),
+                                   (0.5, (0, 255, 0)), (0.67, (0, 220, 255)), (0.83, (0, 60, 255)),
+                                   (1.0, (140, 0, 255))])
 
 
 def effect_preview(led: P.LedConfig) -> tuple[dict[int, tuple] | None, str]:
