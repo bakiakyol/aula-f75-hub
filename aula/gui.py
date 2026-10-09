@@ -31,6 +31,33 @@ SWATCHES = [
 ]
 
 
+# Colors 0-6 as stored in the keyboard's palette (command 0x49)
+PALETTE = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
+           (255, 0, 255), (0, 255, 255), (255, 255, 255)]
+RAINBOW = T.Preset("rainbow", "", [(0.0, (255, 0, 0)), (0.2, (255, 160, 0)), (0.4, (0, 255, 0)),
+                                   (0.6, (0, 200, 255)), (0.8, (0, 0, 255)), (1.0, (255, 0, 255))])
+
+
+def effect_preview(led: P.LedConfig) -> tuple[dict[int, tuple] | None, str]:
+    """Static approximation of the running effect for the drawing, plus a caption."""
+    hw = led.effect
+    e = P.EFFECT_BY_HW.get(hw)
+    name = e.name if e else f"effect {hw}"
+    if hw == CUSTOM_HW:
+        return None, "Showing your custom key colors"
+    if not 1 <= hw <= P.LED_SLOTS:
+        return {}, f"{name}: no preview"
+    slot = led.slot(hw)
+    if e is not None and e.color and slot.color < len(PALETTE):
+        colors = {idx: PALETTE[slot.color] for idx, *_ in K.KEYS}
+    else:
+        colors = T.render(RAINBOW)
+    k = max(0.15, slot.brightness / 9)
+    colors = {i: tuple(round(v * k) for v in c) for i, c in colors.items()}
+    moving = "" if hw == 1 else " (animated on the keyboard)"
+    return colors, f"Preview: {name}{moving} – coloring keys switches to custom"
+
+
 def _key_rect(idx: int, rect: tuple) -> tuple:
     return KNOB_RECT if idx == K.BY_NAME["knob"] else rect
 
@@ -105,7 +132,8 @@ class KeyboardView(Gtk.DrawingArea):
 
     def __init__(self, on_select):
         super().__init__()
-        self.colors: dict[int, tuple] = {}
+        self.colors: dict[int, tuple] = {}     # custom effect table (what painting edits)
+        self.preview: dict[int, tuple] | None = None  # shown instead while another effect runs
         self.selected: set[int] = set()
         self.on_select = on_select
         self.set_size_request(640, 260)
@@ -141,7 +169,8 @@ class KeyboardView(Gtk.DrawingArea):
         for idx, _name, label, rect in K.KEYS:
             x1, y1, x2, y2 = _key_rect(idx, rect)
             x, y, w, h = ox + x1 * s, oy + y1 * s, (x2 - x1) * s, (y2 - y1) * s
-            r, g, b = self.colors.get(idx, (40, 40, 40))
+            shown = self.preview if self.preview is not None else self.colors
+            r, g, b = shown.get(idx, (40, 40, 40))
             cr.new_path()
             if idx == K.BY_NAME["knob"]:
                 cr.arc(x + w / 2, y + h / 2, w / 2, 0, 6.2832)
@@ -239,7 +268,12 @@ class AulaWindow(Gtk.Window):
         return Gtk.Label(label=text, xalign=1)
 
     def _color_bar(self):
-        box = Gtk.Box(spacing=6, margin=8)
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin=8)
+        self.caption = Gtk.Label(xalign=0.5)
+        self.caption.get_style_context().add_class("dim-label")
+        outer.pack_start(self.caption, False, False, 0)
+        box = Gtk.Box(spacing=6)
+        outer.pack_start(box, False, False, 0)
         box.pack_start(Gtk.Label(label="Selected keys:"), False, False, 0)
         for name, rgb in SWATCHES:
             btn = Gtk.Button()
@@ -257,7 +291,7 @@ class AulaWindow(Gtk.Window):
         sel_all = Gtk.Button(label="Select all")
         sel_all.connect("clicked", self.on_select_all)
         box.pack_end(sel_all, False, False, 0)
-        return box
+        return outer
 
     def _page_lighting(self):
         g = self._grid()
@@ -394,6 +428,9 @@ class AulaWindow(Gtk.Window):
         self.os_combo.set_active_id(str(led.os_mode))
         self.winlock.set_active(led.win_lock)
         self.updating = False
+        self.view.preview, caption = effect_preview(led)
+        self.caption.set_text(caption)
+        self.view.queue_draw()
 
     # ---------------------------------------------------------- lighting
     def on_led_widget(self, *_args):
