@@ -905,7 +905,7 @@ class AulaWindow(Gtk.Window):
     def on_record_key(self, _w, event):
         if self.recording is None:
             return False
-        name = backends.GDK_KEYCODES.get(event.hardware_keycode)
+        name = backends.key_name(event)
         down = event.type == Gdk.EventType.KEY_PRESS
         if name is None:
             self.rec_skipped += down

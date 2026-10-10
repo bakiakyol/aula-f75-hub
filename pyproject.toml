@@ -10,8 +10,8 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Baki Akyol" }]
 requires-python = ">=3.10"
-# Linux talks to /dev/hidraw directly; Windows and macOS go through hidapi
-dependencies = ["hidapi; sys_platform != 'linux'"]
+# Linux uses /dev/hidraw and Windows its HID API directly (ctypes); macOS goes through hidapi
+dependencies = ["hidapi; sys_platform == 'darwin'"]
 keywords = ["aula", "aula-f75", "keyboard", "rgb", "hidraw", "linux"]
 classifiers = [
     "License :: OSI Approved :: MIT License",

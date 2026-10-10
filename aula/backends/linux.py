@@ -200,3 +200,8 @@ EVDEV = {
     125: "lwin", 126: "rwin", 127: "menu",
 }
 GDK_KEYCODES = {code + 8: name for code, name in EVDEV.items()}  # X11 keycode = Linux key code + 8
+
+
+def key_name(event) -> str | None:
+    """Key name (as in keymap.HID / macros.MOD_CODES) of a GTK key event, by position."""
+    return GDK_KEYCODES.get(event.hardware_keycode)
