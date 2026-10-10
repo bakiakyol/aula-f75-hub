@@ -25,10 +25,10 @@ keyboard.
 
 - **15 lighting effects** with color, brightness and speed: breathing, raindrops,
   snake, waterfall, rainbow wheel, reactive ripples…
-- **Per-key RGB**: click keys on the drawing and paint them. Includes ready-made themes.
+- **Per-key RGB**: click keys on the drawing and paint them. Includes 9 ready-made themes.
 - **Key remapping** on the base and Fn layers, each change read back and verified.
 - **Macros**: key combos, typed text and delays, run once, N times, while held or
-  until another key is pressed.
+  until another key is pressed. Text follows your keyboard layout (US or Turkish Q).
 - **Device settings**: side light, knob mode (volume or lighting), OS mode
   (Windows / Android / Mac), Windows key lock.
 - **Battery level** (experimental) and connection type in the header.
@@ -110,9 +110,124 @@ aula backup ~/aula-backup
 aula restore ~/aula-backup
 ```
 
-On a Turkish Q layout the letters `ğ ü ş ö ç ı` work as key names too. Macro
-`text:` steps send US-layout key positions, so stick to letters that sit in the same
-place on your layout.
+On a Turkish Q layout the letters `ğ ü ş ö ç ı` work as key names too.
+
+### Themes
+
+`aula preset NAME` paints every key at once (or pick one on the Lighting page of the
+GUI). `aula preset` on its own lists them.
+
+| Theme | Colors |
+|---|---|
+| `synthwave` | purple → pink → cyan, white WASD/arrows, orange Esc |
+| `cyberpunk` | neon yellow → hot pink → cyan, white WASD/arrows, red Esc |
+| `dracula` | deep purple → pink → cyan, yellow WASD, green Esc |
+| `matrix` | dark green → bright green → dark green, red Esc |
+| `sunset` | deep purple → orange → yellow, white WASD |
+| `volcano` | dark red → bright orange → yellow, cyan WASD/Esc |
+| `aurora` | deep blue → aurora green → purple, hot pink WASD |
+| `miami-vice` | bright cyan → hot pink → purple, yellow WASD |
+| `toxic` | dark grey → acid green → dark grey, purple WASD |
+
+### Macros
+
+A macro is a list of steps that the keyboard plays back by itself when you press a
+key. It is stored on the keyboard, so it keeps working in every program, after a
+restart, and on other computers.
+
+**In the GUI**, open the **Macros** page:
+
+1. Choose **New macro…**, type a name and write the steps, one per line.
+2. Press **Save macro**.
+3. Click the key that should run it on the drawing, pick the layer (**Fn layer**
+   means Fn + that key) and how often it repeats.
+4. Press **Assign to selected key**.
+
+Choosing a stored macro shows its events as comment lines. To change it, write new
+steps below them and save it under the same name.
+
+**On the command line**, `aula macro set` saves a macro and, with `--key`, assigns it:
+
+```bash
+aula macro set NAME STEP [STEP …] [--key KEY] [-l LAYER] [--repeat N | --while-held | --until-key]
+aula macro assign KEY NAME [-l LAYER]      # assign a stored macro to another key
+```
+
+#### Steps
+
+| Step | What it does | Examples |
+|---|---|---|
+| `text:…` | types the text | `text:Hello, world!` |
+| a key or a combo | presses the keys together, then lets go | `enter` · `f5` · `ctrl+c` · `ctrl+shift+t` · `alt+tab` · `win` |
+| `wait:MS` | waits MS milliseconds before the next step (not as the first step) | `wait:500` |
+
+- **Key names:** `a`–`z`, `0`–`9`, `f1`–`f12`, `enter`, `esc`, `tab`, `space`,
+  `backspace`, `delete`, `insert`, `home`, `end`, `pgup`, `pgdn`, `up`, `down`,
+  `left`, `right`, `printscreen`, `capslock`, `menu` and the symbol keys (`minus`,
+  `comma`, `slash`…). `aula keys` lists them all at the end.
+- **Modifiers:** `ctrl`, `shift`, `alt`, `win` (or `super`), `altgr`. For one side
+  only: `lctrl`, `rctrl`, `lshift`, `rshift`, `lalt`, `ralt`, `lwin`, `rwin`.
+- Events are 20 ms apart. Use `wait:` for a longer pause after a step, or `--delay MS`
+  to change the spacing of a whole macro.
+- Mouse buttons and media keys (volume, play) can't be used in steps yet.
+
+#### Text and keyboard layouts
+
+The keyboard only sends key positions; the computer's layout decides which character
+each one gives. So `text:` steps are typed with the keys that give those characters
+on **your** layout, which is detected automatically (`setxkbmap`, then
+`/etc/default/keyboard`).
+
+| Layout | What `text:` can type |
+|---|---|
+| `us` (English US) | ASCII: letters, digits, space, punctuation, Enter (`\n`), Tab |
+| `tr` (Turkish Q) | the same plus `ı İ ğ ü ş ö ç Ğ Ü Ş Ö Ç` and the AltGr characters `@ € ₺ { } [ ] \ \| ~ < >` |
+
+To override the detected layout, use `--layout us` or `--layout tr`, or the
+**Text layout** box in the GUI. A macro is typed for the layout it was saved with, so
+on a computer with a different layout its text comes out differently. On other layouts,
+use `us` and stick to letters and digits that sit in the same place as on a US
+keyboard.
+
+#### Repeat modes
+
+| GUI | Command line | Behavior |
+|---|---|---|
+| Run N times | `--repeat N` (default 1) | plays the macro N times (1-255) |
+| Repeat while held | `--while-held` | repeats as long as the key is held down |
+| Repeat until a key is pressed | `--until-key` | keeps repeating until you press any key |
+
+#### Memory
+
+All macros share **512 bytes** on the keyboard, including the factory macro `M1`.
+
+- Every key press costs 8 bytes; a character that needs Shift or AltGr costs 16.
+- Each macro also takes 5 bytes plus 2 per letter of its name (at most 30 letters).
+
+That is room for about 55 lowercase letters of text in total. Macros are meant for
+shortcuts and short phrases, not long paragraphs. When a macro doesn't fit, saving it
+fails with a message and nothing on the keyboard changes.
+
+#### Deleting
+
+`aula macro delete NAME` (or **Delete macro** in the GUI) removes a macro. Keys that
+ran it get their factory function back.
+
+#### Examples
+
+```bash
+# Fn+F1 opens Firefox from the app menu
+aula macro set firefox "win" "wait:400" "text:firefox" "wait:300" "enter" --key f1 -l 1
+
+# Fn+S types a signature on two lines
+aula macro set sig "text:Best regards," "enter" "text:Alex" --key s -l 1
+
+# Fn+D duplicates the current line in many editors: Home, Shift+End, copy, End, Enter, paste
+aula macro set dup "home" "shift+end" "ctrl+c" "end" "enter" "ctrl+v" --key d -l 1
+
+# For games: hold Fn+Space to keep pressing Space
+aula macro set spam "space" --key space -l 1 --while-held
+```
 
 ### Lighting effects
 
@@ -161,7 +276,7 @@ handful of blocks: a 128-byte lighting block, a 504-byte keymap per layer, and a
 - [x] Bluetooth
 - [x] Macros
 - [ ] Recording macros from the keyboard in the GUI
-- [ ] More themes
+- [x] More themes
 
 ## Contributing
 

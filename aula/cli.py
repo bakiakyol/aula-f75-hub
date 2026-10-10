@@ -113,6 +113,8 @@ def cmd_keys(_kb, a) -> None:
     for idx, name, label, _ in sorted(K.KEYS, key=lambda k: k[0]):
         print(f"#{idx:<4} {name:10} {label}")
     print("\nTurkish Q aliases:", ", ".join(f"{k}→{v}" for k, v in K.TR_ALIASES.items()))
+    print("\nRemap targets and macro step keys:", ", ".join([*K.MODIFIERS, *K.HID]))
+    print("Short modifier names in macro steps:", ", ".join(f"{k}→{v}" for k, v in M.MOD_ALIASES.items()))
 
 
 def cmd_key_color(kb: Keyboard, a) -> None:

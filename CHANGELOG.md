@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 – 2026-10-10
 
+- Eight more themes: cyberpunk, dracula, matrix, sunset, volcano, aurora,
+  miami-vice and toxic
 - Macros: text steps follow the computer's keyboard layout (detected, or
   `--layout us|tr` / "Text layout" in the GUI); Turkish Q types ı/i, İ, ğ ü ş ö ç,
   punctuation and AltGr characters correctly
 - Macros: fixed long macros getting corrupted: the firmware overwrites bytes
   126-127 of the macro store, so macros are now laid out around them
+- `aula keys` also lists the key names for remap targets and macro steps
+- README: a full guide to macros and a list of the themes
 
 ## 0.3.0 – 2026-10-10
 

@@ -138,6 +138,13 @@ event    [ (kind << 4) | delay bits 19..16 | 0x80 if release,  delay bits 15..8,
 
 The app writes names as UTF-16LE; the factory macro uses plain ASCII.
 
+The firmware writes `5A A5` over bytes 126-127 of the store (the same marker as at
+the end of the 128-byte LED block), corrupting whatever event is there; bytes
+254-255, 382-383 and 510-511 are left alone. Seen on hardware with a macro whose
+22nd event landed on 124-127 (read back as `00 00 5A A5`). When those bytes are
+written as zeros they read back as zeros. Since every macro has its own address in
+the header, a macro that would cross them can simply start at byte 128.
+
 Keymap entry of a key that runs a macro: `[03, mode, count, macro index]` with
 mode 1 = run `count` times, 2 = repeat while held, 4 = repeat until any key is
 pressed. A plain key entry is `[00, modifiers, key 2, key 1]`, so two-key combos
