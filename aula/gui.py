@@ -535,9 +535,14 @@ class AulaWindow(Gtk.Window):
         self.macro_steps.set_size_request(-1, 120)
         steps_scroll = Gtk.ScrolledWindow(hexpand=True)
         steps_scroll.add(self.macro_steps)
-        hint = Gtk.Label(xalign=0, label="One step per line: ctrl+c · enter · wait:100 · text:hello "
-                                          "(US-layout ASCII)")
+        hint = Gtk.Label(xalign=0, label="One step per line: ctrl+c · enter · wait:100 · text:hello")
         hint.get_style_context().add_class("dim-label")
+        self.macro_text_layout = Gtk.ComboBoxText(halign=Gtk.Align.START)
+        for lid, text in M.LAYOUTS.items():
+            self.macro_text_layout.append(lid, text)
+        self.macro_text_layout.set_active_id(M.detect_layout())
+        self.macro_text_layout.set_tooltip_text("Keyboard layout of this computer: text steps are "
+                                                "typed with the keys that give those characters there")
         self.macro_layer = Gtk.ComboBoxText()
         self.macro_layer.append("0", "Base layer")
         self.macro_layer.append("1", "Fn layer")
@@ -563,7 +568,7 @@ class AulaWindow(Gtk.Window):
         for b in (save, assign, delete):
             buttons.pack_start(b, False, False, 0)
         rows = [("Macro", self.macro_combo), ("Name", self.macro_name), ("Steps", steps_scroll),
-                ("", hint), ("Layer", self.macro_layer), ("Repeat", repeat), ("", buttons)]
+                ("", hint), ("Text layout", self.macro_text_layout), ("Layer", self.macro_layer), ("Repeat", repeat), ("", buttons)]
         for r, (text, w) in enumerate(rows):
             g.attach(self._label(text), 0, r, 1, 1)
             g.attach(w, 1, r, 1, 1)
@@ -821,7 +826,7 @@ class AulaWindow(Gtk.Window):
             self.say("Give the macro a name")
             return
         try:
-            events = M.parse_steps(self._macro_steps())
+            events = M.parse_steps(self._macro_steps(), layout=self.macro_text_layout.get_active_id())
         except ValueError as e:
             self.say(f"Steps: {e}")
             return

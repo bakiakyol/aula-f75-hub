@@ -4,6 +4,7 @@ StMacro_To_HdMacro and checked against the keyboard's factory macro.
 Store (first 512-byte block):
     header   one [address u16, size u16] entry per macro (little endian);
              the first address equals the header size, so it gives the count
+             (bytes 126-127 get overwritten with 5A A5 by the firmware)
     macro    [name length in bytes] + name + events (4 bytes each)
 
 Event:
@@ -18,11 +19,15 @@ Keymap entry for a macro key: [0x03, repeat mode, repeat count, macro index]
                  4 = repeat until any key is pressed
 """
 
+import subprocess
 from dataclasses import dataclass, field
 
 from . import keymap as K
 
 STORE_LEN = 512
+# The firmware writes 5A A5 over bytes 126-127 of the store (as at the end of the
+# 128-byte LED block), so no macro may cover them.
+RESERVED = (126, 128)
 MAX_DELAY = 0xFFFFF
 KIND_KEY, KIND_MOD, KIND_MOUSE = 0, 1, 2
 
@@ -34,14 +39,58 @@ MOD_ALIASES = {"ctrl": "lctrl", "shift": "lshift", "alt": "lalt", "win": "lwin",
 REPEAT_TIMES, REPEAT_HOLD, REPEAT_UNTIL_KEY = 1, 2, 4
 MACRO_ENTRY = 0x03
 
-# US layout characters for text:… steps -> (HID usage, needs shift)
-_SHIFTED = {"!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7", "*": "8",
-            "(": "9", ")": "0", "_": "minus", "+": "equal", "{": "lbracket", "}": "rbracket",
-            "|": "backslash", ":": "semicolon", '"': "quote", "~": "grave", "<": "comma",
-            ">": "period", "?": "slash"}
-_PLAIN = {" ": "space", "-": "minus", "=": "equal", "[": "lbracket", "]": "rbracket",
-          "\\": "backslash", ";": "semicolon", "'": "quote", "`": "grave", ",": "comma",
-          ".": "period", "/": "slash", "\n": "enter", "\t": "tab"}
+# Characters a text:… step can type. The keyboard sends key positions, and the
+# computer's layout turns them into characters, so each layout has its own table:
+# key name -> characters on that key (plain, with Shift, with AltGr)
+_US_KEYS = {
+    "1": "1!", "2": "2@", "3": "3#", "4": "4$", "5": "5%", "6": "6^", "7": "7&", "8": "8*",
+    "9": "9(", "0": "0)", "minus": "-_", "equal": "=+", "lbracket": "[{", "rbracket": "]}",
+    "backslash": "\\|", "semicolon": ";:", "quote": "'\"", "grave": "`~", "comma": ",<",
+    "period": ".>", "slash": "/?", "space": " ", "enter": "\n", "tab": "\t",
+    **{c: c + c.upper() for c in "abcdefghijklmnopqrstuvwxyz"},
+}
+_TR_Q_KEYS = {  # xkb "tr" (Turkish Q)
+    **_US_KEYS,
+    "grave": '"é<', "1": "1!>", "2": "2'£", "3": "3^#", "4": "4+$", "5": "5%½", "6": "6&¾",
+    "7": "7/{", "8": "8([", "9": "9)]", "0": "0=}", "minus": "*?\\", "equal": "-_|",
+    "q": "qQ@", "e": "eE€", "t": "tT₺", "u": "uUû", "i": "ıIî", "o": "oOô", "a": "aAâ",
+    "s": "sSß", "lbracket": "ğĞ", "rbracket": "üÜ~", "semicolon": "şŞ", "quote": "iİ",
+    "backslash": ",;`", "iso_backslash": "<>|", "comma": "öÖ", "period": "çÇ", "slash": ".:",
+}
+LAYOUTS = {"us": "English (US)", "tr": "Turkish Q"}
+
+
+def _char_table(keys: dict[str, str]) -> dict[str, tuple[str, list[str]]]:
+    """character -> (key name, modifiers); the simplest way to type it wins."""
+    table: dict[str, tuple[str, list[str]]] = {}
+    for level, mods in enumerate(([], ["lshift"], ["ralt"])):
+        for key, chars in keys.items():
+            if level < len(chars):
+                table.setdefault(chars[level], (key, mods))
+    return table
+
+
+_CHARS = {"us": _char_table(_US_KEYS), "tr": _char_table(_TR_Q_KEYS)}
+
+
+def detect_layout() -> str:
+    """'tr' when the computer uses the Turkish Q layout, otherwise 'us'."""
+    try:
+        out = subprocess.run(["setxkbmap", "-query"], capture_output=True, text=True, timeout=2).stdout
+        conf = {k.strip(): v.strip() for k, _, v in (ln.partition(":") for ln in out.splitlines())}
+        layout, variant = conf.get("layout", ""), conf.get("variant", "")
+    except (OSError, subprocess.SubprocessError):
+        layout = variant = ""
+    if not layout:
+        try:
+            with open("/etc/default/keyboard") as f:
+                conf = dict(ln.strip().partition("=")[::2] for ln in f if "=" in ln)
+            layout, variant = conf.get("XKBLAYOUT", "").strip('"'), conf.get("XKBVARIANT", "").strip('"')
+        except OSError:
+            pass
+    # several layouts are listed as "tr,us"; the first one is the default
+    first = layout.split(",")[0]
+    return "tr" if first == "tr" and variant.split(",")[0] in ("", "basic") else "us"
 
 
 @dataclass
@@ -116,18 +165,22 @@ def parse_store(raw: bytes) -> list[Macro]:
 
 
 def build_store(macros: list[Macro]) -> bytes:
-    header = bytearray()
-    bodies = bytearray()
-    addr = 4 * len(macros)
-    for m in macros:
+    """Lay the macros out by address, keeping them clear of the bytes the firmware
+    overwrites (a macro that would cross them starts after them)."""
+    data = bytearray(4 * len(macros))
+    if len(data) > RESERVED[0]:
+        raise ValueError("too many macros")
+    for i, m in enumerate(macros):
         body = m.encode()
-        header += addr.to_bytes(2, "little") + len(body).to_bytes(2, "little")
-        bodies += body
-        addr += len(body)
-    data = bytes(header + bodies)
+        addr = len(data)
+        if addr < RESERVED[1] and addr + len(body) > RESERVED[0]:
+            addr = RESERVED[1]
+            data += bytes(addr - len(data))
+        data[4 * i:4 * i + 4] = addr.to_bytes(2, "little") + len(body).to_bytes(2, "little")
+        data += body
     if len(data) > STORE_LEN:
         raise ValueError(f"macros need {len(data)} bytes, the keyboard holds {STORE_LEN}")
-    return data + bytes(STORE_LEN - len(data))
+    return bytes(data) + bytes(STORE_LEN - len(data))
 
 
 def macro_entry(index: int, mode: int = REPEAT_TIMES, count: int = 1) -> bytes:
@@ -155,26 +208,24 @@ def _combo(step: str, delay: int) -> list[Event]:
     return _tap(keys, delay)
 
 
-def _text(text: str, delay: int) -> list[Event]:
+def _text(text: str, delay: int, layout: str) -> list[Event]:
+    chars = _CHARS[layout]
     events = []
     for ch in text:
-        if ch.isascii() and ch.isalpha():
-            key, shift = ch.lower(), ch.isupper()
-        elif ch.isdigit():
-            key, shift = ch, False
-        elif ch in _PLAIN:
-            key, shift = _PLAIN[ch], False
-        elif ch in _SHIFTED:
-            key, shift = _SHIFTED[ch], True
-        else:
-            raise ValueError(f"text steps support US-layout ASCII only, got {ch!r}")
-        keys = [(KIND_MOD, MOD_CODES["lshift"])] if shift else []
+        if ch not in chars:
+            raise ValueError(f"text steps can't type {ch!r} with the {LAYOUTS[layout]} layout")
+        key, mods = chars[ch]
+        keys = [(KIND_MOD, MOD_CODES[m]) for m in mods]
         events += _tap(keys + [(KIND_KEY, K.HID[key])], delay)
     return events
 
 
-def parse_steps(steps: list[str], delay: int = 20) -> list[Event]:
-    """Turn steps like 'ctrl+c', 'wait:100', 'text:hello' into events."""
+def parse_steps(steps: list[str], delay: int = 20, layout: str = "us") -> list[Event]:
+    """Turn steps like 'ctrl+c', 'wait:100', 'text:hello' into events.
+
+    `layout` is the computer's keyboard layout ("us" or "tr"): text steps are
+    typed with the keys that give those characters there.
+    """
     events: list[Event] = []
     for step in steps:
         if step.startswith("wait:"):
@@ -182,7 +233,7 @@ def parse_steps(steps: list[str], delay: int = 20) -> list[Event]:
                 raise ValueError("a macro can't start with a wait")
             events[-1].delay += int(step[5:])
         elif step.startswith("text:"):
-            events += _text(step[5:], delay)
+            events += _text(step[5:], delay, layout)
         else:
             events += _combo(step, delay)
     if not events:

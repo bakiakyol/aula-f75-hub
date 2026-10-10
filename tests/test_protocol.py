@@ -130,6 +130,30 @@ class MacroTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             M.parse_steps(["text:ç"])
 
+    def test_store_skips_reserved_bytes(self):
+        from aula import macros as M
+        ms = [M.Macro("a", M.parse_steps(["text:" + "a" * 14])), M.Macro("b", M.parse_steps(["x"]))]
+        store = M.build_store(ms)
+        first = int.from_bytes(store[4:6], "little")
+        self.assertEqual(first, 128)              # a: 8..123, b (11 bytes) would cross 126
+        self.assertEqual(store[126:128], b"\0\0")
+        self.assertEqual([m.name for m in M.parse_store(store)], ["a", "b"])
+
+    def test_text_layouts(self):
+        from aula import macros as M
+
+        def typed(text, layout):
+            return [e.describe()[:-5] for e in M.parse_steps([f"text:{text}"], layout=layout) if e.down]
+
+        self.assertEqual(typed("bilgi", "us"), ["b", "i", "l", "g", "i"])
+        self.assertEqual(typed("bilgi", "tr"), ["b", "quote", "l", "g", "quote"])
+        self.assertEqual(typed("ıİ", "tr"), ["i", "lshift", "quote"])
+        self.assertEqual(typed("ğüşöç", "tr"), ["lbracket", "rbracket", "semicolon", "comma", "period"])
+        self.assertEqual(typed(",.:", "tr"), ["backslash", "slash", "lshift", "slash"])
+        self.assertEqual(typed("@<", "tr"), ["ralt", "q", "iso_backslash"])
+        with self.assertRaises(ValueError):
+            M.parse_steps(["text:ğ"], layout="us")
+
 
 class PresetTests(unittest.TestCase):
     def test_synthwave(self):

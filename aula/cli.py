@@ -240,7 +240,8 @@ def cmd_macro_list(kb: Keyboard, a) -> None:
 
 
 def cmd_macro_set(kb: Keyboard, a) -> None:
-    events = M.parse_steps(a.steps, a.delay)
+    layout = a.layout or M.detect_layout()
+    events = M.parse_steps(a.steps, a.delay, layout)
     macros = M.parse_store(kb.get_macro_store())
     index = next((i for i, m in enumerate(macros) if m.name == a.name), None)
     if index is None:
@@ -249,7 +250,8 @@ def cmd_macro_set(kb: Keyboard, a) -> None:
     else:
         macros[index] = M.Macro(a.name, events)
     kb.set_macro_store(M.build_store(macros))
-    print(f"Macro {index}: {a.name} ({len(events)} events)")
+    typed = f", text for the {M.LAYOUTS[layout]} layout" if any(x.startswith("text:") for x in a.steps) else ""
+    print(f"Macro {index}: {a.name} ({len(events)} events{typed})")
     if a.key:
         mode, count = _macro_mode(a)
         _assign_macro(kb, a.key, a.layer, M.macro_entry(index, mode, count))
@@ -388,12 +390,13 @@ def main(argv=None) -> int:
         q.add_argument("-l", "--layer", type=int, default=0, choices=range(4))
 
     s = mp.add_parser("set", help="create or replace a macro",
-                      description="Steps: key combos (ctrl+c, enter, f5), 'wait:MS', 'text:hello' "
-                                  "(US-layout ASCII).")
+                      description="Steps: key combos (ctrl+c, enter, f5), 'wait:MS', 'text:hello'.")
     s.add_argument("name")
     s.add_argument("steps", nargs="+")
     s.add_argument("--key", help="also assign it to this key")
     s.add_argument("--delay", type=int, default=20, help="ms between events (default 20)")
+    s.add_argument("--layout", choices=list(M.LAYOUTS),
+                   help="keyboard layout of the computer, for text steps (default: detected)")
     repeat_opts(s)
     s.set_defaults(f=cmd_macro_set)
 

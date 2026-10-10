@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Macros: text steps follow the computer's keyboard layout (detected, or
+  `--layout us|tr` / "Text layout" in the GUI); Turkish Q types ı/i, İ, ğ ü ş ö ç,
+  punctuation and AltGr characters correctly
+- Macros: fixed long macros getting corrupted: the firmware overwrites bytes
+  126-127 of the macro store, so macros are now laid out around them
+
 ## 0.3.0 – 2026-10-10
 
 - Macros: key combos, typed text and delays; run once, N times, while held or
