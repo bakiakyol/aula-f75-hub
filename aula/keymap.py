@@ -120,6 +120,22 @@ HID = {
     "iso_backslash": 0x64, "menu": 0x65,
 }
 
+# Linux input key codes (linux/input-event-codes.h) -> names in HID or MODIFIERS,
+# for recording macros. X11/GTK hardware keycodes are these plus 8.
+EVDEV = {
+    1: "esc", **{2 + i: str((i + 1) % 10) for i in range(10)}, 12: "minus", 13: "equal",
+    14: "backspace", 15: "tab", **{16 + i: c for i, c in enumerate("qwertyuiop")},
+    26: "lbracket", 27: "rbracket", 28: "enter", 29: "lctrl",
+    **{30 + i: c for i, c in enumerate("asdfghjkl")}, 39: "semicolon", 40: "quote",
+    41: "grave", 42: "lshift", 43: "backslash", **{44 + i: c for i, c in enumerate("zxcvbnm")},
+    51: "comma", 52: "period", 53: "slash", 54: "rshift", 56: "lalt", 57: "space",
+    58: "capslock", **{59 + i: f"f{i + 1}" for i in range(10)}, 70: "scrolllock",
+    86: "iso_backslash", 87: "f11", 88: "f12", 97: "rctrl", 99: "printscreen", 100: "ralt",
+    102: "home", 103: "up", 104: "pgup", 105: "left", 106: "right", 107: "end",
+    108: "down", 109: "pgdn", 110: "insert", 111: "delete", 119: "pause",
+    125: "lwin", 126: "rwin", 127: "menu",
+}
+
 # Modifier keys: stored as bits in the second byte of a keymap entry
 MODIFIERS = {
     "lctrl": 0x01, "lshift": 0x02, "lalt": 0x04, "lwin": 0x08,

@@ -330,6 +330,11 @@ class AulaWindow(Gtk.Window):
         self.led: P.LedConfig | None = None
         self.updating = False  # True while widgets are filled from device state
         self.worker = Worker(self.show_error)
+        self.recording: list[tuple[str, bool, int]] | None = None  # macro recording in progress
+        self.rec_held: set[str] = set()
+        self.rec_skipped = 0
+        self.connect("key-press-event", self.on_record_key)
+        self.connect("key-release-event", self.on_record_key)
 
         header = Gtk.HeaderBar(title="AULA F75", show_close_button=True)
         header.set_subtitle("connecting…")
@@ -535,7 +540,17 @@ class AulaWindow(Gtk.Window):
         self.macro_steps.set_size_request(-1, 120)
         steps_scroll = Gtk.ScrolledWindow(hexpand=True)
         steps_scroll.add(self.macro_steps)
-        hint = Gtk.Label(xalign=0, label="One step per line: ctrl+c · enter · wait:100 · text:hello")
+        hint = Gtk.Label(xalign=0, label="One step per line: ctrl+c · enter · wait:100 · text:hello · "
+                                          "down:shift / up:shift")
+        self.macro_record = Gtk.ToggleButton(label="⏺ Record")
+        self.macro_record.set_tooltip_text("Type on the keyboard to fill in the steps, then click Stop. "
+                                           "Shortcuts the desktop itself uses (Alt+Tab, Win) may not get here.")
+        self.macro_record.connect("toggled", self.on_macro_record)
+        self.macro_pauses = Gtk.CheckButton(label="Keep pauses")
+        self.macro_pauses.set_tooltip_text(f"Turn gaps of {M.PAUSE_MIN} ms or more between keys into wait: steps")
+        record = Gtk.Box(spacing=6)
+        record.pack_start(self.macro_record, False, False, 0)
+        record.pack_start(self.macro_pauses, False, False, 0)
         hint.get_style_context().add_class("dim-label")
         self.macro_text_layout = Gtk.ComboBoxText(halign=Gtk.Align.START)
         for lid, text in M.LAYOUTS.items():
@@ -568,7 +583,7 @@ class AulaWindow(Gtk.Window):
         for b in (save, assign, delete):
             buttons.pack_start(b, False, False, 0)
         rows = [("Macro", self.macro_combo), ("Name", self.macro_name), ("Steps", steps_scroll),
-                ("", hint), ("Text layout", self.macro_text_layout), ("Layer", self.macro_layer), ("Repeat", repeat), ("", buttons)]
+                ("", hint), ("", record), ("Text layout", self.macro_text_layout), ("Layer", self.macro_layer), ("Repeat", repeat), ("", buttons)]
         for r, (text, w) in enumerate(rows):
             g.attach(self._label(text), 0, r, 1, 1)
             g.attach(w, 1, r, 1, 1)
@@ -855,6 +870,41 @@ class AulaWindow(Gtk.Window):
         layer = int(self.macro_layer.get_active_id())
         name = self.macro_list[int(mid)].name
         self._write_entry(idx, layer, entry, f"{name} → {'Fn+' if layer else ''}{K.BY_INDEX.get(idx, idx)}")
+
+    def on_macro_record(self, button):
+        if button.get_active():
+            self.recording, self.rec_held, self.rec_skipped = [], set(), 0
+            button.set_label("⏹ Stop")
+            self.say("Recording: type the macro on the keyboard, then click Stop")
+            return
+        rec, self.recording = self.recording or [], None
+        button.set_label("⏺ Record")
+        end = rec[-1][2] if rec else 0
+        rec += [(name, False, end) for name in sorted(self.rec_held)]  # still held at Stop
+        layout = self.macro_text_layout.get_active_id()
+        steps = M.steps_from_recording(rec, layout, self.macro_pauses.get_active())
+        if not steps:
+            self.say("Nothing was recorded")
+            return
+        self.macro_steps.get_buffer().set_text("\n".join(steps) + "\n")
+        skipped = f" ({self.rec_skipped} key(s) without a name skipped)" if self.rec_skipped else ""
+        self.say(f"Recorded {sum(d for _n, d, _t in rec)} key press(es){skipped}. "
+                 "Check the steps, then Save macro")
+
+    def on_record_key(self, _w, event):
+        if self.recording is None:
+            return False
+        name = K.EVDEV.get(event.hardware_keycode - 8)  # X11 keycode = Linux key code + 8
+        down = event.type == Gdk.EventType.KEY_PRESS
+        if name is None:
+            self.rec_skipped += down
+        elif down and name not in self.rec_held:  # auto-repeat sends more presses
+            self.rec_held.add(name)
+            self.recording.append((name, True, event.time))
+        elif not down and name in self.rec_held:  # keys held before Record are ignored
+            self.rec_held.discard(name)
+            self.recording.append((name, False, event.time))
+        return True  # keys go to the recording, not to the widgets
 
     def on_macro_delete(self, _b):
         mid = self.macro_combo.get_active_id()

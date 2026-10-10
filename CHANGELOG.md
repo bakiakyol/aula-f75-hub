@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 – 2026-10-10
+
+- GUI: record macros from the keyboard (Record / Stop on the Macros page). Typed
+  characters become text: steps for your layout, shortcuts become combos, fast
+  typing with overlapping keys is handled; optional "Keep pauses"
+- Macros: `down:KEY` / `up:KEY` steps for keys that stay held across other steps
+
 ## 0.3.1 – 2026-10-10
 
 - Eight more themes: cyberpunk, dracula, matrix, sunset, volcano, aurora,

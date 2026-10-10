@@ -139,6 +139,57 @@ class MacroTests(unittest.TestCase):
         self.assertEqual(store[126:128], b"\0\0")
         self.assertEqual([m.name for m in M.parse_store(store)], ["a", "b"])
 
+    def test_down_up_steps(self):
+        from aula import macros as M
+        ev = M.parse_steps(["down:shift", "a", "up:shift"])
+        self.assertEqual([e.describe() for e in ev], ["lshift↓20ms", "a↓20ms", "a↑20ms", "lshift↑20ms"])
+
+    def test_recording_to_steps(self):
+        from aula import macros as M
+
+        def rec(*keys, gap=30):
+            out, t = [], 0
+            for k in keys:
+                name, down = k[1:], k[0] == "+"
+                out.append((name, down, t))
+                t += gap
+            return out
+
+        def tap(*names):
+            return [x for n in names for x in (f"+{n}", f"-{n}")]
+
+        # "Selam, iyi" + Enter on Turkish Q, then Ctrl+C and the Win key alone
+        typed = rec("+lshift", *tap("s"), "-lshift", *tap("e", "l", "a", "m", "backslash", "space",
+                                                           "quote", "y", "quote", "enter"),
+                    "+lctrl", *tap("c"), "-lctrl", "+lwin", "-lwin")
+        steps = M.steps_from_recording(typed, "tr")
+        self.assertEqual(steps, ["text:Selam, iyi", "enter", "ctrl+c", "win"])
+        self.assertEqual(M.steps_from_recording(typed, "us"), ["text:Selam\\ 'y'", "enter", "ctrl+c", "win"])
+
+        def keys(events):
+            return [(e.kind, e.code, e.down) for e in events]
+
+        # replaying the steps gives the same characters (Shift released between letters is fine)
+        replay = M.parse_steps(steps, layout="tr")
+        self.assertEqual(sum(e.down for e in replay if e.kind == M.KIND_KEY), 12)
+
+        # fast typing overlaps keys: still plain text (as recorded on hardware)
+        fast = rec("+lshift", "+m", "-m", "-lshift", "+e", "+r", "-e", "-r", "+rshift", "+1", "-rshift", "-1")
+        self.assertEqual(M.steps_from_recording(fast, "tr"), ["text:Mer!"])
+
+        # a key really held while others are pressed falls back to down:/up:
+        held = rec("+w", "+space", "-space", "-w", gap=200)
+        steps = M.steps_from_recording(held)
+        self.assertEqual(steps, ["down:w", "down:space", "up:space", "up:w"])
+        self.assertEqual(keys(M.parse_steps(steps)), [(0, 0x1A, True), (0, 0x2C, True), (0, 0x2C, False), (0, 0x1A, False)])
+
+        # pauses
+        slow = [("a", True, 0), ("a", False, 30), ("b", True, 530), ("b", False, 560)]
+        self.assertEqual(M.steps_from_recording(slow), ["text:ab"])
+        self.assertEqual(M.steps_from_recording(slow, pauses=True), ["text:a", "wait:500", "text:b"])
+        # spaces at the ends stay separate steps
+        self.assertEqual(M.steps_from_recording(rec(*tap("space", "a", "space"))), ["space", "text:a", "space"])
+
     def test_text_layouts(self):
         from aula import macros as M
 

@@ -28,7 +28,8 @@ keyboard.
 - **Per-key RGB**: click keys on the drawing and paint them. Includes 9 ready-made themes.
 - **Key remapping** on the base and Fn layers, each change read back and verified.
 - **Macros**: key combos, typed text and delays, run once, N times, while held or
-  until another key is pressed. Text follows your keyboard layout (US or Turkish Q).
+  until another key is pressed. Write the steps or record them from the keyboard.
+  Text follows your keyboard layout (US or Turkish Q).
 - **Device settings**: side light, knob mode (volume or lighting), OS mode
   (Windows / Android / Mac), Windows key lock.
 - **Battery level** (experimental) and connection type in the header.
@@ -143,6 +144,14 @@ restart, and on other computers.
    means Fn + that key) and how often it repeats.
 4. Press **Assign to selected key**.
 
+Instead of writing the steps you can **record** them: press **⏺ Record**, type on
+the keyboard, then click **⏹ Stop**. The keys become steps (typed characters turn into
+`text:` steps, shortcuts into combos like `ctrl+a`) that you can check and edit before
+saving. Tick **Keep pauses** to keep gaps of 100 ms or more as `wait:` steps. Type the
+name first: while recording, every key goes to the recording. Shortcuts the desktop
+itself catches (Alt+Tab, the Win key) and keys without a name here (volume, the knob)
+are not recorded.
+
 Choosing a stored macro shows its events as comment lines. To change it, write new
 steps below them and save it under the same name.
 
@@ -160,6 +169,7 @@ aula macro assign KEY NAME [-l LAYER]      # assign a stored macro to another ke
 | `text:…` | types the text | `text:Hello, world!` |
 | a key or a combo | presses the keys together, then lets go | `enter` · `f5` · `ctrl+c` · `ctrl+shift+t` · `alt+tab` · `win` |
 | `wait:MS` | waits MS milliseconds before the next step (not as the first step) | `wait:500` |
+| `down:KEY` / `up:KEY` | presses or releases one key, for keys that stay held across other steps | `down:shift` · `up:shift` |
 
 - **Key names:** `a`–`z`, `0`–`9`, `f1`–`f12`, `enter`, `esc`, `tab`, `space`,
   `backspace`, `delete`, `insert`, `home`, `end`, `pgup`, `pgdn`, `up`, `down`,
@@ -227,6 +237,9 @@ aula macro set dup "home" "shift+end" "ctrl+c" "end" "enter" "ctrl+v" --key d -l
 
 # For games: hold Fn+Space to keep pressing Space
 aula macro set spam "space" --key space -l 1 --while-held
+
+# Keep W held while jumping, then let go
+aula macro set runjump "down:w" "wait:200" "space" "wait:300" "up:w" --key w -l 1
 ```
 
 ### Lighting effects
@@ -275,7 +288,7 @@ handful of blocks: a 128-byte lighting block, a 504-byte keymap per layer, and a
 - [ ] Wired mode (same data, different transport)
 - [x] Bluetooth
 - [x] Macros
-- [ ] Recording macros from the keyboard in the GUI
+- [x] Recording macros from the keyboard in the GUI
 - [x] More themes
 
 ## Contributing

@@ -27,8 +27,9 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
 - **Tuş başı RGB**: Çizimde tuşlara tıklayıp boya. 9 hazır tema da var.
 - **Tuş atama**: Normal ve Fn katmanında. Her değişiklik klavyeden geri okunup doğrulanıyor.
 - **Makrolar**: Tuş kombinasyonları, yazı ve beklemeler. Bir kez, N kez, basılı
-  tutulduğu sürece ya da başka bir tuşa basılana kadar çalıştırılabiliyor. Yazılar
-  klavye düzenine (ABD ya da Türkçe Q) göre çıkıyor.
+  tutulduğu sürece ya da başka bir tuşa basılana kadar çalıştırılabiliyor. Adımlar
+  yazılabiliyor ya da klavyeden kaydedilebiliyor. Yazılar klavye düzenine (ABD ya da
+  Türkçe Q) göre çıkıyor.
 - **Cihaz ayarları**: Yan gösterge, tekerlek modu (ses ya da ışık), işletim sistemi
   modu (Windows / Android / Mac), Windows tuşu kilidi.
 - **Pil yüzdesi** (deneysel) ve bağlantı türü üst çubukta.
@@ -147,6 +148,14 @@ sonra ve başka bilgisayarlarda da çalışır.
    ve kaç kez tekrarlanacağını ayarla.
 4. **Assign to selected key**'e bas.
 
+Adımları yazmak yerine **kaydedebilirsin**: **⏺ Record**'a bas, klavyede yaz, sonra
+**⏹ Stop**'a tıkla. Basılan tuşlar adımlara dönüşür (yazılan karakterler `text:`
+adımına, kısayollar `ctrl+a` gibi kombinasyonlara). Kaydetmeden önce bunları kontrol
+edip düzeltebilirsin. **Keep pauses** işaretliyse 100 ms ve üstü duraklamalar `wait:`
+adımı olarak korunur. Adı kayda başlamadan önce yaz, çünkü kayıt sırasında basılan her
+tuş kayda gider. Masaüstünün kendisinin yakaladığı kısayollar (Alt+Tab, Win tuşu) ve
+burada adı olmayan tuşlar (ses, tekerlek) kaydedilmez.
+
 Kayıtlı bir makroyu seçince olayları yorum satırı olarak görünür. Değiştirmek için
 altına yeni adımları yazıp aynı adla kaydet.
 
@@ -164,6 +173,7 @@ aula macro assign TUŞ AD [-l KATMAN]       # kayıtlı makroyu başka bir tuşa
 | `text:…` | yazıyı yazar | `text:Merhaba dünya!` |
 | tuş ya da kombinasyon | tuşlara birlikte basıp bırakır | `enter` · `f5` · `ctrl+c` · `ctrl+shift+t` · `alt+tab` · `win` |
 | `wait:MS` | sonraki adımdan önce MS milisaniye bekler (ilk adım olamaz) | `wait:500` |
+| `down:TUŞ` / `up:TUŞ` | tek bir tuşa basar ya da bırakır; başka adımlar boyunca basılı kalacak tuşlar için | `down:shift` · `up:shift` |
 
 - **Tuş adları:** `a`–`z`, `0`–`9`, `f1`–`f12`, `enter`, `esc`, `tab`, `space`,
   `backspace`, `delete`, `insert`, `home`, `end`, `pgup`, `pgdn`, `up`, `down`,
@@ -231,6 +241,9 @@ aula macro set cogalt "home" "shift+end" "ctrl+c" "end" "enter" "ctrl+v" --key d
 
 # Oyunlar için: Fn+Space basılı durdukça Space'e basmaya devam eder
 aula macro set spam "space" --key space -l 1 --while-held
+
+# W'yi basılı tutup zıpla, sonra W'yi bırak
+aula macro set kosziple "down:w" "wait:200" "space" "wait:300" "up:w" --key w -l 1
 ```
 
 ### Işık efektleri
@@ -279,7 +292,7 @@ blokta tutuluyor: 128 baytlık ışık bloğu, katman başına 504 baytlık tuş
 - [ ] Kablolu mod (aynı veri, farklı iletim katmanı)
 - [x] Bluetooth
 - [x] Makrolar
-- [ ] GUI'de klavyeden makro kaydetme
+- [x] GUI'de klavyeden makro kaydetme
 - [x] Daha fazla tema
 
 ## Katkı

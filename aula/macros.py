@@ -194,18 +194,18 @@ def _tap(code_kind: list[tuple[int, int]], delay: int) -> list[Event]:
     return downs + ups
 
 
+def _key(name: str) -> tuple[int, int]:
+    name = MOD_ALIASES.get(name, name)
+    name = K.TR_ALIASES.get(name, name)
+    if name in MOD_CODES:
+        return KIND_MOD, MOD_CODES[name]
+    if name in K.HID:
+        return KIND_KEY, K.HID[name]
+    raise ValueError(f"unknown key in macro step: {name!r}")
+
+
 def _combo(step: str, delay: int) -> list[Event]:
-    keys = []
-    for part in step.lower().split("+"):
-        part = MOD_ALIASES.get(part, part)
-        part = K.TR_ALIASES.get(part, part)
-        if part in MOD_CODES:
-            keys.append((KIND_MOD, MOD_CODES[part]))
-        elif part in K.HID:
-            keys.append((KIND_KEY, K.HID[part]))
-        else:
-            raise ValueError(f"unknown key in macro step: {part!r}")
-    return _tap(keys, delay)
+    return _tap([_key(part) for part in step.lower().split("+")], delay)
 
 
 def _text(text: str, delay: int, layout: str) -> list[Event]:
@@ -221,7 +221,7 @@ def _text(text: str, delay: int, layout: str) -> list[Event]:
 
 
 def parse_steps(steps: list[str], delay: int = 20, layout: str = "us") -> list[Event]:
-    """Turn steps like 'ctrl+c', 'wait:100', 'text:hello' into events.
+    """Turn steps like 'ctrl+c', 'wait:100', 'text:hello', 'down:shift' into events.
 
     `layout` is the computer's keyboard layout ("us" or "tr"): text steps are
     typed with the keys that give those characters there.
@@ -234,8 +234,112 @@ def parse_steps(steps: list[str], delay: int = 20, layout: str = "us") -> list[E
             events[-1].delay += int(step[5:])
         elif step.startswith("text:"):
             events += _text(step[5:], delay, layout)
+        elif step.startswith(("down:", "up:")):
+            action, _, name = step.partition(":")
+            events.append(Event(*_key(name.strip().lower()), action == "down", delay))
         else:
             events += _combo(step, delay)
     if not events:
         raise ValueError("a macro needs at least one step")
     return events
+
+
+# ------------------------------------------------------------ recording
+_SHORT = {"lctrl": "ctrl", "lshift": "shift", "lalt": "alt", "lwin": "win", "ralt": "altgr"}
+_LEVEL_MODS = ((), ("lshift",), ("ralt",))
+_TEXT_KEYS = {"us": _US_KEYS, "tr": _TR_Q_KEYS}
+PAUSE_MIN = 100  # ms; shorter gaps between recorded steps aren't kept as waits
+HOLD_MIN = 300  # ms; a key held this long while others are pressed is a real hold
+
+
+def _combos(rec: list[tuple[str, bool, int]]) -> list[tuple[list[str], int, int]] | None:
+    """Group a recording into key combos (the modifiers held when a key goes
+    down, plus that key), as (key names, start ms, end ms), in press order.
+
+    Fast typing overlaps keys (the next one goes down before the last one is
+    up); that still counts as separate taps. None when a key is really held
+    (HOLD_MIN ms or more) while others are pressed, which only down:/up: can say.
+    """
+    out: list[tuple[list[str], int, int]] = []
+    held: list[list] = []  # [modifier, used in a combo yet, pressed at]
+    pressed: dict[str, tuple[int, int]] = {}  # key -> (index in rec, index in out)
+    for i, (name, down, t) in enumerate(rec):
+        if name in MOD_CODES:
+            mod = next((h for h in held if h[0] == name), None)
+            if down == (mod is not None):
+                return None
+            if down:
+                held.append([name, False, t])
+            else:
+                if not mod[1]:  # pressed and let go on its own, e.g. the Win key
+                    alone = [h for h in held if not h[1]]
+                    out.append(([h[0] for h in alone], alone[0][2], t))
+                    for h in alone:
+                        h[1] = True
+                held.remove(mod)
+        elif down:
+            if name in pressed:
+                return None
+            pressed[name] = (i, len(out))
+            out.append(([h[0] for h in held] + [name], t, t))
+            for h in held:
+                h[1] = True
+        else:
+            if name not in pressed:
+                return None
+            j, k = pressed.pop(name)
+            names, start, _ = out[k]
+            if t - start >= HOLD_MIN and any(d for _n, d, _t in rec[j + 1:i]):
+                return None
+            out[k] = (names, start, t)
+    return out
+
+
+def steps_from_recording(rec: list[tuple[str, bool, int]], layout: str = "us",
+                         pauses: bool = False) -> list[str]:
+    """Turn recorded key events (key name, pressed, time in ms) into steps.
+
+    Typed characters become text: steps for `layout`, the rest key combos.
+    Keys held down across others fall back to down:/up: steps. With `pauses`, gaps
+    of PAUSE_MIN ms or more become wait: steps.
+    """
+    chars = {(key, mods): chars[level]
+             for key, chars in _TEXT_KEYS[layout].items()
+             for level, mods in enumerate(_LEVEL_MODS) if level < len(chars)}
+    groups = _combos(rec)
+    if groups is None:
+        steps = [(f"{'down' if d else 'up'}:{_SHORT.get(n, n)}", t, t, None) for n, d, t in rec]
+    else:
+        steps = []
+        for names, start, end in groups:
+            mods = tuple(sorted("lshift" if n == "rshift" else n for n in names[:-1]))
+            ch = chars.get((names[-1], mods))
+            steps.append(("+".join(_SHORT.get(n, n) for n in names), start, end,
+                          ch if ch not in (None, "\n", "\t") else None))
+    out: list[str] = []
+    text = ""
+    prev_end = None
+    for step, start, end, ch in steps:
+        pause = start - prev_end if pauses and prev_end is not None else 0
+        if text and (ch is None or pause >= PAUSE_MIN):
+            out += _text_steps(text)
+            text = ""
+        if pause >= PAUSE_MIN:
+            out.append(f"wait:{round(pause, -1)}")
+        if ch is not None:
+            text += ch
+        else:
+            out.append(step)
+        prev_end = end
+    return out + _text_steps(text)
+
+
+def _text_steps(text: str) -> list[str]:
+    """A text: step, with spaces at either end as their own steps (the step
+    editor trims lines)."""
+    if not text:
+        return []
+    body = text.strip(" ")
+    lead = len(text) - len(text.lstrip(" "))
+    trail = len(text) - len(text.rstrip(" ")) if body else 0
+    return ["space"] * lead + ([f"text:{body}"] if body else []) + ["space"] * trail
