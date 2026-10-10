@@ -125,8 +125,8 @@ From KB.ini `[FN1]` and the keyboard's layer-1 table; behavior notes from the ow
 
 | Key | Entry | Function |
 |---|---|---|
-| \` | `07 00 00 08` | 2.4G mode |
-| 1 / 2 / 3 | `07 00 00 05/06/07` | Bluetooth device 1 / 2 / 3 |
+| \` | `07 00 00 08` | 2.4G (the back switch decides the connection type) |
+| 1 / 2 / 3 | `07 00 00 05/06/07` | Bluetooth device slot 1 / 2 / 3 |
 | W / E | `07 00 00 18` / `07 00 00 1A` | Windows / Mac mode |
 | Q | `07 00 00 19` | Android mode |
 | B | `07 00 00 11` | battery gauge on 1…0 (green, 10 % per key) while held |
@@ -142,6 +142,10 @@ From KB.ini `[FN1]` and the keyboard's layer-1 table; behavior notes from the ow
 | F3 | `00 04 00 2B` | Alt+Tab |
 | F4 | `00 08 00 08` | Win+E |
 | F7 … F12 | `02 00 00 B6/CD/B5/E2/EA/E9` | prev / play / next / mute / vol− / vol+ |
+
+The connection type is chosen with the 3-position switch on the back of the
+keyboard (2.4G / wired / Bluetooth); in Bluetooth mode Fn+1/2/3 picks which paired
+device to connect to.
 
 Holding Fn alone lights the key of the active connection (\` for 2.4G, 1-3 for
 Bluetooth) and of the OS mode (W or E) in white, on top of the running effect.

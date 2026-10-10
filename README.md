@@ -48,6 +48,9 @@ keyboard.
 
 ## Supported hardware
 
+The connection type is chosen with the switch on the back of the keyboard
+(2.4G / wired / Bluetooth). The tool finds whichever one is active.
+
 | Keyboard | Connection | Status |
 |---|---|---|
 | AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ Verified |

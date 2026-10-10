@@ -47,6 +47,9 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
 
 ## Desteklenen donanım
 
+Bağlantı türü klavyenin arkasındaki anahtarla seçiliyor (2.4G / kablo / Bluetooth).
+Araç hangisi aktifse onu kendisi buluyor.
+
 | Klavye | Bağlantı | Durum |
 |---|---|---|
 | AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ Doğrulandı |
