@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Platform code split out into `aula/backends/` (groundwork for Windows and
+  macOS); no change in behavior on Linux
+- Sleep time "never" (0) verified on hardware
+
 ## 0.4.0 – 2026-10-10
 
 - GUI: record macros from the keyboard (Record / Stop on the Macros page). Typed
