@@ -12,8 +12,9 @@ administrator rights.
 
 1. **Python 3.10 or newer**: `winget install Python.Python.3.12`, or the installer
    from python.org (tick "Add python.exe to PATH").
-2. **The code**: `git clone https://github.com/bakiakyol/aula-f75-hub.git`, or
-   download the ZIP from GitHub and unpack it somewhere permanent.
+2. **The code** (Windows support is on the `port-windows` branch until it's merged):
+   `git clone -b port-windows https://github.com/bakiakyol/aula-f75-hub.git`, or
+   pick that branch on GitHub, download its ZIP and unpack it somewhere permanent.
 3. In that folder, run:
 
    ```powershell
