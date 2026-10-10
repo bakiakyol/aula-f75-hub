@@ -5,6 +5,7 @@ the channel is found and opened comes from aula.backends (hidraw on Linux).
 """
 
 import random
+import sys
 import time
 
 from . import protocol as P
@@ -44,6 +45,9 @@ class Keyboard:
         self.path = path
         self.mode = mode
         self.bluetooth = mode == "Bluetooth"
+        # macOS's Bluetooth link drops the same reply packets every time, so
+        # multi-packet reads never complete there (docs/protocol.md)
+        self.mac_bluetooth = self.bluetooth and sys.platform == "darwin"
         # The guard watches the keyboard's normal key reports so we never talk to it
         # while a key is held (see wait_keys_released).
         self._ch, self._guard = open_device(path, mode)
@@ -97,7 +101,7 @@ class Keyboard:
         """
         rcmd = cmd | P.READ
         if retries is None:
-            retries = 15 if self.bluetooth else 4
+            retries = 15 if self.bluetooth and not self.mac_bluetooth else 4
         parts: dict[int, bytes] = {}
         total = None
         if self.bluetooth:  # right after a write the keyboard is busy saving
@@ -130,6 +134,10 @@ class Keyboard:
         if total is None:
             raise AulaError("the keyboard didn't answer. It may be asleep: press any key "
                             "to wake it, then try again")
+        if self.mac_bluetooth:
+            raise AulaError("settings can't be read over Bluetooth on macOS: the keyboard's "
+                            "reply always loses some packets on the way. Switch the keyboard "
+                            "to the 2.4G dongle (switch on the back) and try again")
         missing = sorted(set(range(total)) - set(parts))
         raise AulaError(f"read 0x{rcmd:02x} incomplete, packets {missing} never arrived; try again")
 

@@ -5,10 +5,14 @@ import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 from aula import keymap as K
 from aula import macros as M
+from aula import protocol as P
 from aula.backends import macos as MAC
+from aula.backends.base import Channel, KeyGuard
+from aula.device import AulaError, Keyboard
 
 ON_MAC = sys.platform == "darwin"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,6 +78,40 @@ class RecordingTests(unittest.TestCase):
         names = set(MAC.KEYCODES.values())
         self.assertLessEqual(set("abcdefghijklmnopqrstuvwxyz0123456789"), names)
         self.assertLessEqual({f"f{i}" for i in range(1, 13)}, names)
+
+
+class LossyChannel(Channel):
+    """Answers every read with only packets 0, 1, 5 and 9 of 10, like macOS over Bluetooth."""
+
+    def __init__(self):
+        self.queue = []
+
+    def write(self, pkt):
+        self.queue = [P.build_packet(pkt[1], 10, i, 0, b"\0" * 14) for i in (0, 1, 5, 9)]
+
+    def recv(self, timeout):
+        return self.queue.pop(0) if self.queue else None
+
+
+class QuietGuard(KeyGuard):
+    def wait_released(self, quiet=0.4, limit=5.0):
+        pass
+
+
+class BluetoothReadTests(unittest.TestCase):
+    def keyboard(self, platform):
+        with mock.patch("aula.device.find_devices", return_value=[{"path": "fake", "mode": "Bluetooth"}]), \
+                mock.patch("aula.device.open_device", return_value=(LossyChannel(), QuietGuard())), \
+                mock.patch("sys.platform", platform):
+            return Keyboard("fake")
+
+    def test_macos_says_use_the_dongle(self):
+        with self.assertRaisesRegex(AulaError, "2.4G dongle"):
+            self.keyboard("darwin").read(P.CMD_SET_LED)
+
+    def test_linux_keeps_the_generic_error(self):
+        with self.assertRaisesRegex(AulaError, r"packets \[2, 3, 4, 6, 7, 8\] never arrived"):
+            self.keyboard("linux").read(P.CMD_SET_LED, retries=2)
 
 
 class ScriptTests(unittest.TestCase):
