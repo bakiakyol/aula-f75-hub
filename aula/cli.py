@@ -36,7 +36,12 @@ def cmd_info(kb: Keyboard, a) -> None:
     print(f"Effect    : {led.effect} ({e.name if e else 'unknown'})")
     if 1 <= led.effect <= P.LED_SLOTS:
         s = led.slot(led.effect)
-        print(f"Brightness: {s.brightness}/9   Speed: {s.speed}/4   Color: {P.COLORS[s.color]}")
+        color = P.COLORS[s.color] if s.color < len(P.COLORS) else str(s.color)
+        if s.color < P.PALETTE_COLORS and led.effect < P.PALETTE_COUNT:
+            rgb = P.palette_color(kb.get_palette(), led.effect, s.color)
+            if rgb != P.DEFAULT_PALETTE[s.color]:
+                color += f" (set to {P.rgb_hex(rgb)})"
+        print(f"Brightness: {s.brightness}/9   Speed: {s.speed}/4   Color: {color}")
     battery = kb.get_battery()
     print(f"Battery   : {battery}% (experimental)" if battery is not None else "Battery   : ?")
     side = led.side_mode
@@ -69,8 +74,36 @@ def cmd_effect(kb: Keyboard, a) -> None:
         if a.color is not None:
             s.color = _color(a.color)
         led.set_slot(e.hw, s)
+    if a.rgb is not None:
+        if not e.color or e.hw >= P.PALETTE_COUNT:
+            raise AulaError(f"{e.name} has no color setting")
+        rgb = P.parse_rgb(a.rgb)
+        if s.color >= P.PALETTE_COLORS:  # "multi": take over the first color
+            s.color = 0
+            led.set_slot(e.hw, s)
+        kb.set_palette(P.set_palette_color(kb.get_palette(), e.hw, s.color, rgb))
     kb.set_led(led)
-    print(f"Effect: {e.name}")
+    if a.rgb is not None:
+        print(f"Effect: {e.name}, color {P.rgb_hex(rgb)} (in place of {P.COLORS[s.color]})")
+    else:
+        print(f"Effect: {e.name}")
+
+
+def cmd_palette(kb: Keyboard, a) -> None:
+    raw = kb.get_palette()
+    effects = [_effect(a.effect)] if a.effect else [e for e in P.EFFECTS if e.color]
+    if a.reset:
+        for e in effects:
+            raw = P.reset_palette(raw, e.hw)
+        kb.set_palette(raw)
+        print("Factory colors back for:", ", ".join(e.name for e in effects))
+        return
+    for e in effects:
+        cols = []
+        for i in range(P.PALETTE_COLORS):
+            rgb = P.palette_color(raw, e.hw, i)
+            cols.append(f"{P.COLORS[i]}={P.rgb_hex(rgb)}" if rgb != P.DEFAULT_PALETTE[i] else P.COLORS[i])
+        print(f"{e.name:14} {'  '.join(cols)}")
 
 
 def cmd_brightness(kb: Keyboard, a) -> None:
@@ -308,6 +341,7 @@ BACKUP = [  # (file, read function, write function)
     ("cmd_41_layer1.hex", lambda kb: kb.get_matrix(1), lambda kb, d: kb.set_matrix(d, 1)),
     ("cmd_41_layer2.hex", lambda kb: kb.get_matrix(2), lambda kb, d: kb.set_matrix(d, 2)),
     ("cmd_41_layer3.hex", lambda kb: kb.get_matrix(3), lambda kb, d: kb.set_matrix(d, 3)),
+    ("cmd_49.hex", lambda kb: kb.get_palette(), lambda kb, d: kb.set_palette(d)),
     ("cmd_44.hex", lambda kb: kb.get_led().to_bytes(), lambda kb, d: kb.set_led(P.LedConfig(d))),
     # the custom color table has to be sent after the LED block
     ("cmd_42.hex", lambda kb: kb.get_custom(), lambda kb, d: kb.set_custom(d)),
@@ -368,7 +402,16 @@ def main(argv=None) -> int:
     s.add_argument("-c", "--color", help="color name or 0-7")
     s.add_argument("-b", "--brightness", type=int, choices=range(10), metavar="0-9")
     s.add_argument("-s", "--speed", type=int, choices=range(5), metavar="0-4")
+    s.add_argument("--rgb", metavar="RRGGBB",
+                   help="any color: replaces the chosen color (-c, or the current one) for this effect")
     s.set_defaults(f=cmd_effect)
+
+    s = sp.add_parser("palette", help="the colors each effect uses (changed ones shown as RGB)",
+                      description="Every effect has its own 7 colors; 'aula effect NAME --rgb RRGGBB' "
+                                  "changes one. --reset puts the factory colors back.")
+    s.add_argument("effect", nargs="?", help="effect name or number (default: all with a color)")
+    s.add_argument("--reset", action="store_true", help="factory colors back")
+    s.set_defaults(f=cmd_palette)
 
     s = sp.add_parser("brightness", help="brightness of the current effect")
     s.add_argument("value", type=int, choices=range(10), metavar="0-9")
