@@ -6,7 +6,7 @@
 
 [English](README.md) · **Türkçe**
 
-[![tests](https://github.com/OWNER/aula-f75-hub/actions/workflows/tests.yml/badge.svg)](https://github.com/OWNER/aula-f75-hub/actions/workflows/tests.yml)
+[![tests](https://github.com/bakiakyol/aula-f75-hub/actions/workflows/tests.yml/badge.svg)](https://github.com/bakiakyol/aula-f75-hub/actions/workflows/tests.yml)
 ![lisans](https://img.shields.io/badge/lisans-MIT-blue)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![platform](https://img.shields.io/badge/platform-Linux-informational)
@@ -57,7 +57,7 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
 ## Kurulum
 
 ```bash
-git clone https://github.com/OWNER/aula-f75-hub.git
+git clone https://github.com/bakiakyol/aula-f75-hub.git
 cd aula-f75-hub
 ./install.sh
 ```

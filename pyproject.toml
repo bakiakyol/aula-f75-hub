@@ -19,6 +19,10 @@ classifiers = [
     "Environment :: X11 Applications :: GTK",
 ]
 
+[project.urls]
+Homepage = "https://github.com/bakiakyol/aula-f75-hub"
+Issues = "https://github.com/bakiakyol/aula-f75-hub/issues"
+
 [project.optional-dependencies]
 gui = ["PyGObject"]
 
