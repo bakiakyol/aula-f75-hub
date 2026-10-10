@@ -67,6 +67,18 @@ class LedConfigTests(unittest.TestCase):
         led.win_lock = True
         self.assertEqual((led.to_bytes()[27], led.to_bytes()[15]), (2, 1))
 
+    def test_sleep(self):
+        from aula.cli import parse_duration
+        led = P.LedConfig(_backup("cmd_44.hex"))
+        self.assertEqual(led.sleep, 60)  # factory: 2 x 30 s, timed on hardware
+        led.sleep = 300
+        self.assertEqual(led.to_bytes()[24], 10)  # what the official app writes for 5 min
+        self.assertEqual(P.sleep_text(90), "1.5 min")
+        self.assertEqual([parse_duration(t) for t in ("5", "5m", "90s", "1.5m", "off")], [300, 300, 90, 90, 0])
+        for bad in (45, 1230):
+            with self.assertRaises(ValueError):
+                led.sleep = bad
+
     def test_bad_values(self):
         led = P.LedConfig(_backup("cmd_44.hex"))
         with self.assertRaises(ValueError):

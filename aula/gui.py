@@ -521,10 +521,14 @@ class AulaWindow(Gtk.Window):
             self.os_combo.append(str(i), m)
         for c in (self.side_combo, self.knob_combo, self.os_combo):
             c.connect("changed", self.on_led_widget)
+        self.sleep_combo = Gtk.ComboBoxText()
+        self.sleep_combo.set_tooltip_text("Idle time before the keyboard sleeps (2.4G and Bluetooth)")
+        self.sleep_combo.connect("changed", self.on_led_widget)
         self.winlock = Gtk.Switch(halign=Gtk.Align.START)
         self.winlock.connect("notify::active", self.on_led_widget)
         rows = [("Side light", self.side_combo), ("Knob", self.knob_combo),
-                ("OS mode", self.os_combo), ("Windows key lock", self.winlock)]
+                ("OS mode", self.os_combo), ("Windows key lock", self.winlock),
+                ("Sleep after", self.sleep_combo)]
         for r, (text, w) in enumerate(rows):
             g.attach(self._label(text), 0, r, 1, 1)
             g.attach(w, 1, r, 1, 1)
@@ -640,6 +644,10 @@ class AulaWindow(Gtk.Window):
         self.knob_combo.set_active_id(str(led.knob_mode))
         self.os_combo.set_active_id(str(led.os_mode))
         self.winlock.set_active(led.win_lock)
+        self.sleep_combo.remove_all()
+        for sec in sorted({*P.SLEEP_CHOICES, led.sleep} - {0}) + [0]:
+            self.sleep_combo.append(str(sec), P.sleep_text(sec))
+        self.sleep_combo.set_active_id(str(led.sleep))
         self.updating = False
         self.update_readout()
         self.tick()
@@ -680,6 +688,7 @@ class AulaWindow(Gtk.Window):
         led.knob_mode = int(self.knob_combo.get_active_id())
         led.os_mode = int(self.os_combo.get_active_id())
         led.win_lock = self.winlock.get_active()
+        led.sleep = int(self.sleep_combo.get_active_id())
         self.fill_widgets()
         self.send_led()
 

@@ -46,6 +46,7 @@ def cmd_info(kb: Keyboard, a) -> None:
     os_mode = led.os_mode
     print(f"OS mode   : {P.OS_MODES[os_mode] if os_mode < len(P.OS_MODES) else os_mode}")
     print(f"Win lock  : {'on' if led.win_lock else 'off'}")
+    print(f"Sleep     : {P.sleep_text(led.sleep)}")
 
 
 def cmd_effects(_kb, a) -> None:
@@ -100,6 +101,29 @@ def cmd_os(kb: Keyboard, a) -> None:
     led.os_mode = P.OS_MODES.index(a.mode)
     kb.set_led(led)
     print(f"OS mode: {a.mode}")
+
+
+def parse_duration(text: str) -> int:
+    """'5', '5m', '90s', '1.5m' -> seconds; 'off' / 'never' -> 0."""
+    t = text.strip().lower()
+    if t in ("off", "never", "0"):
+        return 0
+    try:
+        if t.endswith("s"):
+            return round(float(t[:-1]))
+        return round(float(t.removesuffix("min").removesuffix("m")) * 60)
+    except ValueError:
+        raise AulaError(f"cannot read {text!r} as a time, e.g. 5m, 90s or off") from None
+
+
+def cmd_sleep(kb: Keyboard, a) -> None:
+    led = kb.get_led()
+    if a.time is None:
+        print(f"Sleep: {P.sleep_text(led.sleep)}")
+        return
+    led.sleep = parse_duration(a.time)
+    kb.set_led(led)
+    print(f"Sleep: {P.sleep_text(led.sleep)}")
 
 
 def cmd_win_lock(kb: Keyboard, a) -> None:
@@ -361,6 +385,11 @@ def main(argv=None) -> int:
     s = sp.add_parser("os", help="OS mode (same as Fn+W / Fn+Q / Fn+E)")
     s.add_argument("mode", choices=P.OS_MODES)
     s.set_defaults(f=cmd_os)
+
+    s = sp.add_parser("sleep", help="idle time before the keyboard sleeps (wireless only)",
+                      description="Steps of 30 seconds up to 20 minutes, e.g. 5m, 90s, 1.5m, or off.")
+    s.add_argument("time", nargs="?", help="e.g. 5m, 90s or off; leave out to show it")
+    s.set_defaults(f=cmd_sleep)
 
     s = sp.add_parser("win-lock", help="disable/enable the Windows key (same as Fn+Win)")
     s.add_argument("state", choices=["on", "off"])

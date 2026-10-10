@@ -37,6 +37,7 @@ LED_WIN_LOCK_OFFSET = 15    # 1 = Windows key disabled (Fn+Win)
 LED_SIDE_MODE_OFFSET = 18   # white bar next to Esc (Fn+Left Shift cycles it)
 LED_KNOB_MODE_OFFSET = 26   # knob function (long-press the knob to toggle)
 LED_OS_MODE_OFFSET = 27     # Fn+W / Fn+Q / Fn+E
+LED_SLEEP_OFFSET = 24       # wireless sleep timer in units of 30 s, 0 = never
 LED_SLOTS_OFFSET = 58
 LED_SLOTS = 34
 CUSTOM_LEN = MATRIX_LEN * 3
@@ -134,6 +135,18 @@ KNOB_MODES = ["media", "lighting"]
 
 OS_MODES = ["windows", "android", "mac"]  # verified on hardware (Fn+W, Fn+Q, Fn+E)
 
+# Sleep timer: the official app (KB.ini SleepUI / SleepHW) offers these and stores
+# seconds / 30. Factory value 2 = 1 minute, verified with a stopwatch.
+SLEEP_UNIT = 30
+SLEEP_CHOICES = [60, 90, 120, 180, 240, 300, 600, 900, 1200]
+SLEEP_MAX = 1200
+
+
+def sleep_text(seconds: int) -> str:
+    if seconds == 0:
+        return "never"
+    return f"{seconds // 60} min" if seconds % 60 == 0 else f"{seconds / 60:g} min"
+
 
 @dataclass
 class EffectSlot:
@@ -195,6 +208,18 @@ class LedConfig:
         if not 0 <= mode < len(KNOB_MODES):
             raise ValueError(f"knob mode must be 0-{len(KNOB_MODES) - 1}")
         self.raw[LED_KNOB_MODE_OFFSET] = mode
+
+    @property
+    def sleep(self) -> int:
+        """Seconds of idle time before the keyboard sleeps (wireless only); 0 = never."""
+        return self.raw[LED_SLEEP_OFFSET] * SLEEP_UNIT
+
+    @sleep.setter
+    def sleep(self, seconds: int) -> None:
+        if seconds % SLEEP_UNIT or not 0 <= seconds <= SLEEP_MAX:
+            raise ValueError(f"sleep time must be a multiple of {SLEEP_UNIT} s, "
+                             f"at most {SLEEP_MAX // 60} min (0 = never)")
+        self.raw[LED_SLEEP_OFFSET] = seconds // SLEEP_UNIT
 
     def _off(self, hw: int) -> int:
         if not 1 <= hw <= LED_SLOTS:

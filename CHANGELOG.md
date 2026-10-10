@@ -6,6 +6,8 @@
   characters become text: steps for your layout, shortcuts become combos, fast
   typing with overlapping keys is handled; optional "Keep pauses"
 - Macros: `down:KEY` / `up:KEY` steps for keys that stay held across other steps
+- Sleep timer: `aula sleep 5m` / `off` and "Sleep after" on the Device page
+  (LED block byte 24, 30 s units, timed on hardware); shown by `aula info`
 
 ## 0.3.1 – 2026-10-10
 

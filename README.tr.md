@@ -31,7 +31,7 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
   yazılabiliyor ya da klavyeden kaydedilebiliyor. Yazılar klavye düzenine (ABD ya da
   Türkçe Q) göre çıkıyor.
 - **Cihaz ayarları**: Yan gösterge, tekerlek modu (ses ya da ışık), işletim sistemi
-  modu (Windows / Android / Mac), Windows tuşu kilidi.
+  modu (Windows / Android / Mac), Windows tuşu kilidi, uyku süresi.
 - **Pil yüzdesi** (deneysel) ve bağlantı türü üst çubukta.
 - **Yedekleme ve geri yükleme**, klavyenin fabrika ayarları dahil.
 - **Canlı önizleme**: Çalışan efektin klavyede kabaca nasıl göründüğünü gösteriyor.
@@ -107,6 +107,7 @@ aula side-light breathing                  # off | fill | breathing | static
 aula knob lighting                         # media | lighting
 aula os mac                                # windows | android | mac
 aula win-lock on
+aula sleep 10m                             # 10 dk boşta kalınca uyu (30 sn adımlarla 20m'ye kadar, ya da off)
 aula backup ~/aula-yedek
 aula restore ~/aula-yedek
 ```
@@ -275,7 +276,7 @@ bütün efekt numaraları klavyede tek tek denenerek çıkarıldı.
 | Mesaj | Çözüm |
 |---|---|
 | `permission denied` | `./install.sh`'i çalıştır ya da `udev/` içindeki kuralı elle kur |
-| `the keyboard didn't answer` | Klavye uyuyor. Bir tuşa bas ve tekrar dene |
+| `the keyboard didn't answer` | Klavye uyuyor. Bir tuşa bas ve tekrar dene (ne kadar sürede uyuyacağını `aula sleep` ayarlar) |
 | `a key seems to be held down` | Klavyeden elini çek. Araç klavyeyle konuşmadan önce bütün tuşların bırakılmasını bekliyor, yoksa kaybolan bir "tuş bırakıldı" sinyali bir tuşun sonsuza kadar tekrar etmesine yol açabiliyor |
 | `connected by cable` | 2.4G dongle ya da Bluetooth kullan, kablolu mod henüz desteklenmiyor |
 

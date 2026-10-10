@@ -31,7 +31,7 @@ keyboard.
   until another key is pressed. Write the steps or record them from the keyboard.
   Text follows your keyboard layout (US or Turkish Q).
 - **Device settings**: side light, knob mode (volume or lighting), OS mode
-  (Windows / Android / Mac), Windows key lock.
+  (Windows / Android / Mac), Windows key lock, sleep timer.
 - **Battery level** (experimental) and connection type in the header.
 - **Backup and restore**, including the keyboard's factory settings.
 - **Animated previews** that show roughly what the running effect looks like.
@@ -107,6 +107,7 @@ aula side-light breathing                  # off | fill | breathing | static
 aula knob lighting                         # media | lighting
 aula os mac                                # windows | android | mac
 aula win-lock on
+aula sleep 10m                             # sleep after 10 idle minutes (30 s steps up to 20m, or off)
 aula backup ~/aula-backup
 aula restore ~/aula-backup
 ```
@@ -271,7 +272,7 @@ was made by trying every effect number on the keyboard.
 | Message | Fix |
 |---|---|
 | `permission denied` | Run `./install.sh`, or install the udev rule from `udev/` by hand |
-| `the keyboard didn't answer` | The keyboard is asleep. Press any key and try again |
+| `the keyboard didn't answer` | The keyboard is asleep. Press any key and try again (`aula sleep` sets how soon it sleeps) |
 | `a key seems to be held down` | Let go of the keyboard. The tool waits for all keys to be released before it talks to the keyboard; otherwise a dropped key-release can make a key repeat forever |
 | `connected by cable` | Use the 2.4G dongle or Bluetooth; wired mode isn't supported yet |
 
