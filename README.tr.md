@@ -50,7 +50,7 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
 | Klavye | Bağlantı | Durum |
 |---|---|---|
 | AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ Doğrulandı |
-| AULA F75 | Bluetooth (`3554:fa07`) | ⚠️ Aynı kanal, henüz denenmedi |
+| AULA F75 | Bluetooth (`3554:fa07`) | ✅ Doğrulandı |
 | AULA F75 | Kablo (`258a:010c`) | ❌ Henüz desteklenmiyor (farklı iletim katmanı) |
 | Diğer AULA modelleri | – | ❓ Bilinmiyor. Lütfen [bildir](../../issues/new/choose) |
 
@@ -150,7 +150,7 @@ blokta tutuluyor: 128 baytlık ışık bloğu, katman başına 504 baytlık tuş
 ## Yol haritası
 
 - [ ] Kablolu mod (aynı veri, farklı iletim katmanı)
-- [ ] Bluetooth'un doğrulanması
+- [x] Bluetooth
 - [ ] Makrolar
 - [ ] Daha fazla tema
 

@@ -51,7 +51,7 @@ keyboard.
 | Keyboard | Connection | Status |
 |---|---|---|
 | AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ Verified |
-| AULA F75 | Bluetooth (`3554:fa07`) | ⚠️ Same channel, not tested yet |
+| AULA F75 | Bluetooth (`3554:fa07`) | ✅ Verified |
 | AULA F75 | Cable (`258a:010c`) | ❌ Not supported yet (different transport) |
 | Other AULA models | – | ❓ Unknown. Please [report](../../issues/new/choose) |
 
@@ -147,7 +147,7 @@ handful of blocks: a 128-byte lighting block, a 504-byte keymap per layer, and a
 ## Roadmap
 
 - [ ] Wired mode (same data, different transport)
-- [ ] Confirm Bluetooth
+- [x] Bluetooth
 - [ ] Macros
 - [ ] More themes
 

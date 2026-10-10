@@ -11,7 +11,7 @@ transport and is not implemented yet.
 | Mode | VID:PID | Channel |
 |---|---|---|
 | 2.4G dongle | 3554:FA09 | interface 1, Usage Page 0xFF02, report 0x13, 19-byte in/out |
-| Bluetooth | 3554:FA07 | same channel (via uhid) |
+| Bluetooth | 3554:FA07 | same channel (via uhid); keyboard reports: id 1 boot-style, id 2 NKRO |
 | Wired | 258A:010C | Usage Page 0xFF00, feature report 0x208 bytes (not implemented) |
 
 ## Packet (20 bytes including report id)
@@ -32,6 +32,17 @@ transport and is not implemented yet.
 - **Read:** send `[0x13, cmd|0x40, 1, 0, sub<<4, 0…, sum]`. The reply arrives in
   several packets, which have to be reassembled by their index `[3]`. Packets do get
   lost, so a reader has to reassemble by index and retry when a chunk is missing.
+
+### Bluetooth packet loss
+
+Over Bluetooth, multi-packet replies lose packets: the first three arrive, then
+roughly every other one is dropped, depending on timing (the keyboard sends faster
+than the radio link carries). The keyboard ignores the index field of a read
+request and always resends the whole reply, so a reader has to repeat the request
+and collect the parts across attempts. Adding a random 0-50 ms delay before each
+attempt spreads the losses; right after a write the keyboard is busy saving and
+loses even more, so reads wait 0.5 s after a write. Writes are unaffected: each
+packet is acknowledged before the next one is sent.
 
 ### Dropped key releases
 

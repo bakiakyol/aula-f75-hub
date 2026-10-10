@@ -6,6 +6,7 @@ Access requires the udev rule in udev/70-aula-f75.rules.
 
 import glob
 import os
+import random
 import select
 import time
 
@@ -46,13 +47,37 @@ def _sibling_nodes(path: str) -> list[str]:
     ]
 
 
-def _keys_down(report: bytes) -> bool | None:
-    """True/False if the report is a keyboard state report, None otherwise."""
-    if len(report) == 8:                       # boot keyboard: [mods, 0, key x5, vendor]
+def _keys_down(report: bytes, bluetooth: bool = False) -> bool | None:
+    """True/False if the report is a keyboard state report, None otherwise.
+
+    2.4G dongle: boot keyboard interface sends 8-byte reports without an id
+    ([mods, 0, key x5, vendor]); the NKRO bitmap is report 4.
+    Bluetooth: everything arrives on one node; the keyboard report is id 1
+    ([1, mods, 0, key x5, vendor]) and the NKRO bitmap is id 2. (Id 4 is system
+    control there, so it must not be read as keys.)
+    """
+    if not report:
+        return None
+    if bluetooth:
+        if report[0] == 0x01 and len(report) >= 8:
+            return bool(report[1] or any(report[3:8]))
+        if report[0] == 0x02:
+            return any(report[1:])
+        return None
+    if len(report) == 8:
         return bool(report[0] or any(report[2:7]))
-    if report and report[0] == 0x04:           # NKRO bitmap report (id 4)
+    if report[0] == 0x04:
         return any(report[1:])
     return None
+
+
+def _mode_of(path: str) -> str:
+    hid_id = _uevent(f"/sys/class/hidraw/{os.path.basename(path)}/device/uevent").get("HID_ID", "")
+    try:
+        _bus, vid, pid = (int(x, 16) for x in hid_id.split(":"))
+    except ValueError:
+        return "?"
+    return PRODUCTS.get(pid, "?") if vid == VENDOR_WIRELESS else "?"
 
 
 def find_devices() -> list[dict]:
@@ -84,19 +109,33 @@ def find_devices() -> list[dict]:
 
 class Keyboard:
     def __init__(self, path: str | None = None, timeout: float = 1.0):
-        if path is None:
-            devs = [d for d in find_devices() if d["supported"]]
-            if not devs:
-                if any(not d["supported"] for d in find_devices()):
-                    raise AulaError("The keyboard is connected by cable. Wired mode is not "
-                                    "supported yet; use the 2.4G dongle or Bluetooth.")
-                raise AulaError("AULA F75 not found (is the dongle plugged in and the keyboard on?)")
-            path = devs[0]["path"]
-            self.mode = devs[0]["mode"]
-        else:
-            self.mode = "?"
-        self.path = path
         self.timeout = timeout
+        if path is not None:
+            self._open(path, _mode_of(path))
+            return
+        devs = [d for d in find_devices() if d["supported"]]
+        if not devs:
+            if find_devices():
+                raise AulaError("The keyboard is connected by cable. Wired mode is not "
+                                "supported yet; use the 2.4G dongle or Bluetooth.")
+            raise AulaError("AULA F75 not found (is the dongle plugged in and the keyboard on?)")
+        if len(devs) == 1:
+            self._open(devs[0]["path"], devs[0]["mode"])
+            return
+        # Several candidates (e.g. dongle plugged in while the keyboard is on Bluetooth):
+        # use the one the keyboard actually answers on.
+        for d in devs:
+            self._open(d["path"], d["mode"])
+            if self._probe():
+                return
+            self.close()
+        raise AulaError("the keyboard didn't answer. It may be asleep: press any key "
+                        "to wake it, then try again")
+
+    def _open(self, path: str, mode: str) -> None:
+        self.path = path
+        self.mode = mode
+        self.bluetooth = mode == "Bluetooth"
         try:
             self.fd = os.open(path, os.O_RDWR)
         except PermissionError:
@@ -112,6 +151,20 @@ class Keyboard:
                 pass
         self._held: dict[int, bool] = {}
         self._last_key_event = time.monotonic()
+        self._last_write = 0.0
+
+    def _probe(self, timeout: float = 0.6) -> bool:
+        """Quick single read: does the keyboard answer on this channel?"""
+        self.wait_keys_released()
+        self._drain()
+        os.write(self.fd, P.read_request(P.CMD_PROFILE))
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            r = self._recv(0.1)
+            rep = P.parse_packet(r) if r else None
+            if rep is not None and rep.cmd == P.CMD_PROFILE | P.READ:
+                return True
+        return False
 
     def close(self) -> None:
         for fd in self._key_fds:
@@ -140,7 +193,7 @@ class Keyboard:
         while True:
             for fd in select.select(self._key_fds, [], [], 0.05)[0]:
                 try:
-                    state = _keys_down(os.read(fd, 64))
+                    state = _keys_down(os.read(fd, 64), self.bluetooth)
                 except BlockingIOError:
                     continue
                 if state is not None:
@@ -161,29 +214,49 @@ class Keyboard:
             return os.read(self.fd, 64)
         return None
 
-    def read(self, cmd: int, sub: int = 0, retries: int = 3) -> bytes:
-        """Send a read command and reassemble the multi-packet reply by index."""
+    def read(self, cmd: int, sub: int = 0, retries: int | None = None) -> bytes:
+        """Send a read command and reassemble the multi-packet reply by index.
+
+        Packets get lost (over Bluetooth roughly every other one after the first
+        few, at random), and the keyboard always resends the whole reply. So the
+        request is repeated and the parts are collected across attempts.
+        """
         rcmd = cmd | P.READ
+        if retries is None:
+            retries = 15 if self.bluetooth else 4
+        parts: dict[int, bytes] = {}
+        total = None
+        if self.bluetooth:  # right after a write the keyboard is busy saving
+            settle = self._last_write + 0.5 - time.monotonic()
+            if settle > 0:
+                time.sleep(settle)
         for _ in range(retries):
             self.wait_keys_released()
             self._drain()
+            if self.bluetooth:  # shift the burst against the radio's timing slots
+                time.sleep(random.uniform(0, 0.05))
             os.write(self.fd, P.read_request(cmd, sub))
-            parts: dict[int, bytes] = {}
-            total = None
             deadline = time.monotonic() + 2 * self.timeout
+            last = None
             while time.monotonic() < deadline:
-                r = self._recv(0.3)
+                if last is not None and time.monotonic() - last > 0.25:
+                    break  # this burst is over
+                r = self._recv(0.05)
                 rep = P.parse_packet(r) if r else None
                 if rep is None or rep.cmd != rcmd:
                     continue
                 if rep.error:
                     raise AulaError(f"keyboard rejected read 0x{rcmd:02x}")
+                last = time.monotonic()
                 total = rep.total
                 parts[rep.index] = rep.data
                 if len(parts) == total:
                     return b"".join(parts[i] for i in range(total))
-        raise AulaError("the keyboard didn't answer. It may be asleep: press any key "
-                        "to wake it, then try again")
+        if total is None:
+            raise AulaError("the keyboard didn't answer. It may be asleep: press any key "
+                            "to wake it, then try again")
+        missing = sorted(set(range(total)) - set(parts))
+        raise AulaError(f"read 0x{rcmd:02x} incomplete, packets {missing} never arrived; try again")
 
     def write(self, cmd: int, data: bytes, sub: int = 0, retries: int = 3) -> None:
         """Write data in 14-byte packets; the keyboard echoes each one back as an ack."""
@@ -197,6 +270,7 @@ class Keyboard:
             else:
                 raise AulaError(f"write 0x{cmd:02x} not acknowledged (packet {pkt[3]})")
             time.sleep(0.015)
+        self._last_write = time.monotonic()
 
     def _wait_ack(self, pkt: bytes) -> bool:
         deadline = time.monotonic() + self.timeout
