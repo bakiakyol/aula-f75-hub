@@ -17,9 +17,10 @@ from gi.repository import Gdk, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 
 from . import animation as A  # noqa: E402
 from . import keymap as K  # noqa: E402
+from . import macros as M  # noqa: E402
 from . import presets as T  # noqa: E402
 from . import protocol as P  # noqa: E402
-from .cli import BACKUP  # noqa: E402
+from .cli import BACKUP, delete_macro  # noqa: E402
 from .device import AulaError, Keyboard  # noqa: E402
 
 CUSTOM_HW = P.EFFECT_BY_NAME["custom"].hw
@@ -351,6 +352,7 @@ class AulaWindow(Gtk.Window):
         stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         stack.add_titled(self._page_lighting(), "lighting", "Lighting")
         stack.add_titled(self._page_remap(), "remap", "Key remap")
+        stack.add_titled(self._page_macros(), "macros", "Macros")
         stack.add_titled(self._page_device(), "device", "Device")
         stack.add_titled(self._page_backup(), "backup", "Backup")
         sidebar = Gtk.StackSidebar(stack=stack)
@@ -518,6 +520,50 @@ class AulaWindow(Gtk.Window):
             g.attach(w, 1, r, 1, 1)
         return g
 
+    def _page_macros(self):
+        g = self._grid()
+        self.macro_list: list[M.Macro] = []
+        self.macro_combo = Gtk.ComboBoxText()
+        self.macro_combo.connect("changed", self.on_macro_chosen)
+        self.macro_name = Gtk.Entry(placeholder_text="name")
+        self.macro_steps = Gtk.TextView(monospace=True, wrap_mode=Gtk.WrapMode.NONE)
+        self.macro_steps.set_size_request(-1, 120)
+        steps_scroll = Gtk.ScrolledWindow(hexpand=True)
+        steps_scroll.add(self.macro_steps)
+        hint = Gtk.Label(xalign=0, label="One step per line: ctrl+c · enter · wait:100 · text:hello "
+                                          "(US-layout ASCII)")
+        hint.get_style_context().add_class("dim-label")
+        self.macro_layer = Gtk.ComboBoxText()
+        self.macro_layer.append("0", "Base layer")
+        self.macro_layer.append("1", "Fn layer")
+        self.macro_layer.set_active_id("0")
+        self.macro_repeat = Gtk.ComboBoxText()
+        for mid, text in ((M.REPEAT_TIMES, "Run N times"), (M.REPEAT_HOLD, "Repeat while held"),
+                          (M.REPEAT_UNTIL_KEY, "Repeat until a key is pressed")):
+            self.macro_repeat.append(str(mid), text)
+        self.macro_repeat.set_active_id(str(M.REPEAT_TIMES))
+        self.macro_count = Gtk.SpinButton.new_with_range(1, 255, 1)
+        repeat = Gtk.Box(spacing=6)
+        repeat.pack_start(self.macro_repeat, False, False, 0)
+        repeat.pack_start(self.macro_count, False, False, 0)
+        save = Gtk.Button(label="Save macro")
+        save.get_style_context().add_class("suggested-action")
+        save.connect("clicked", self.on_macro_save)
+        assign = Gtk.Button(label="Assign to selected key")
+        assign.connect("clicked", self.on_macro_assign)
+        delete = Gtk.Button(label="Delete macro")
+        delete.get_style_context().add_class("destructive-action")
+        delete.connect("clicked", self.on_macro_delete)
+        buttons = Gtk.Box(spacing=6)
+        for b in (save, assign, delete):
+            buttons.pack_start(b, False, False, 0)
+        rows = [("Macro", self.macro_combo), ("Name", self.macro_name), ("Steps", steps_scroll),
+                ("", hint), ("Layer", self.macro_layer), ("Repeat", repeat), ("", buttons)]
+        for r, (text, w) in enumerate(rows):
+            g.attach(self._label(text), 0, r, 1, 1)
+            g.attach(w, 1, r, 1, 1)
+        return g
+
     def _page_backup(self):
         box = Gtk.Box(spacing=8, margin=16, valign=Gtk.Align.START)
         for text, cb in (("Back up to folder…", self.on_backup),
@@ -533,13 +579,15 @@ class AulaWindow(Gtk.Window):
         self.say("Reading keyboard…")
 
         def job(kb):
-            return (kb.mode, kb.get_led(), kb.get_custom(), kb.get_battery())
+            return (kb.mode, kb.get_led(), kb.get_custom(), kb.get_battery(),
+                    M.parse_store(kb.get_macro_store()))
 
         self.worker.submit(job, self.loaded)
 
     def loaded(self, result):
-        mode, led, custom, battery = result
+        mode, led, custom, battery, macros = result
         self.led = led
+        self.fill_macros(macros)
         self.view.colors = P.colors_from_custom(custom)
         self.view.queue_draw()
         bat = f" · Battery {battery}%" if battery is not None else ""
@@ -729,6 +777,89 @@ class AulaWindow(Gtk.Window):
         with open(path) as f:
             entry = P.matrix_entry(bytes.fromhex(f.read().strip()), idx)
         self._write_entry(idx, layer, entry, f"{K.BY_INDEX.get(idx, idx)} restored")
+
+    # ------------------------------------------------------------ macros
+    NEW_MACRO = "__new__"
+
+    def fill_macros(self, macros, select=None):
+        self.macro_list = macros
+        self.updating = True
+        self.macro_combo.remove_all()
+        self.macro_combo.append(self.NEW_MACRO, "New macro…")
+        for i, m in enumerate(macros):
+            self.macro_combo.append(str(i), m.name)
+        self.updating = False
+        self.macro_combo.set_active_id(str(select) if select is not None else self.NEW_MACRO)
+
+    def on_macro_chosen(self, _c):
+        if self.updating:
+            return
+        mid = self.macro_combo.get_active_id()
+        buf = self.macro_steps.get_buffer()
+        if mid in (None, self.NEW_MACRO):
+            self.macro_name.set_text("")
+            buf.set_text("")
+            return
+        m = self.macro_list[int(mid)]
+        self.macro_name.set_text(m.name)
+        buf.set_text("# stored events (comment lines are ignored); type new steps below to replace them\n"
+                     + "\n".join(f"# {e.describe()}" for e in m.events) + "\n")
+
+    def _macro_steps(self):
+        buf = self.macro_steps.get_buffer()
+        text = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+        return [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+
+    def on_macro_save(self, _b):
+        name = self.macro_name.get_text().strip()
+        if not name:
+            self.say("Give the macro a name")
+            return
+        try:
+            events = M.parse_steps(self._macro_steps())
+        except ValueError as e:
+            self.say(f"Steps: {e}")
+            return
+        macros = list(self.macro_list)
+        index = next((i for i, m in enumerate(macros) if m.name == name), None)
+        if index is None:
+            macros.append(M.Macro(name, events))
+            index = len(macros) - 1
+        else:
+            macros[index] = M.Macro(name, events)
+        store = M.build_store(macros)
+        self.worker.submit(lambda kb: kb.set_macro_store(store),
+                           lambda _r: (self.fill_macros(macros, index), self.say(f"Saved macro {name!r}")))
+
+    def on_macro_assign(self, _b):
+        mid = self.macro_combo.get_active_id()
+        idx = self._selected_key()
+        if mid in (None, self.NEW_MACRO):
+            self.say("Save the macro first, then assign it")
+            return
+        if idx is None:
+            self.say("Select one key on the board to assign the macro to")
+            return
+        mode = int(self.macro_repeat.get_active_id())
+        entry = M.macro_entry(int(mid), mode, int(self.macro_count.get_value()))
+        layer = int(self.macro_layer.get_active_id())
+        name = self.macro_list[int(mid)].name
+        self._write_entry(idx, layer, entry, f"{name} → {'Fn+' if layer else ''}{K.BY_INDEX.get(idx, idx)}")
+
+    def on_macro_delete(self, _b):
+        mid = self.macro_combo.get_active_id()
+        if mid in (None, self.NEW_MACRO):
+            return
+        index = int(mid)
+        name = self.macro_list[index].name
+        if not self._confirm(f"Delete macro {name!r}? Keys using it get their factory function back."):
+            return
+        current = list(self.macro_list)
+
+        def job(kb):
+            return delete_macro(kb, current, index)
+
+        self.worker.submit(job, lambda left: (self.fill_macros(left), self.say(f"Deleted macro {name!r}")))
 
     # ------------------------------------------------------------ backup
     def _pick_folder(self, title):

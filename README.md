@@ -27,6 +27,8 @@ keyboard.
   snake, waterfall, rainbow wheel, reactive ripples…
 - **Per-key RGB**: click keys on the drawing and paint them. Includes ready-made themes.
 - **Key remapping** on the base and Fn layers, each change read back and verified.
+- **Macros**: key combos, typed text and delays, run once, N times, while held or
+  until another key is pressed.
 - **Device settings**: side light, knob mode (volume or lighting), OS mode
   (Windows / Android / Mac), Windows key lock.
 - **Battery level** (experimental) and connection type in the header.
@@ -96,6 +98,10 @@ aula key-color --clear all=0010ff w=ff0000 a=ff0000 s=ff0000 d=ff0000
 aula preset synthwave                      # built-in per-key theme
 aula remap capslock lctrl                  # undo: aula remap capslock capslock
 aula remap f1 esc -l 1                     # remap on the Fn layer
+aula macro set hello "text:hello" --key y -l 1          # Fn+Y types "hello"
+aula macro set paste "ctrl+c" "wait:100" "ctrl+v" --key f1 --repeat 2
+aula macro list                            # stored macros and their keys
+aula macro delete hello                    # its key gets its factory function back
 aula side-light breathing                  # off | fill | breathing | static
 aula knob lighting                         # media | lighting
 aula os mac                                # windows | android | mac
@@ -104,7 +110,9 @@ aula backup ~/aula-backup
 aula restore ~/aula-backup
 ```
 
-On a Turkish Q layout the letters `ğ ü ş ö ç ı` work as key names too.
+On a Turkish Q layout the letters `ğ ü ş ö ç ı` work as key names too. Macro
+`text:` steps send US-layout key positions, so stick to letters that sit in the same
+place on your layout.
 
 ### Lighting effects
 
@@ -151,7 +159,8 @@ handful of blocks: a 128-byte lighting block, a 504-byte keymap per layer, and a
 
 - [ ] Wired mode (same data, different transport)
 - [x] Bluetooth
-- [ ] Macros
+- [x] Macros
+- [ ] Recording macros from the keyboard in the GUI
 - [ ] More themes
 
 ## Contributing

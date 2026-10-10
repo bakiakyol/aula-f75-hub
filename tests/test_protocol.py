@@ -102,6 +102,35 @@ class KeyReportTests(unittest.TestCase):
         self.assertIsNone(_keys_down(bytes([4, 1]), True))  # system control, not keys
 
 
+class MacroTests(unittest.TestCase):
+    def test_factory_macro(self):
+        from aula import macros as M
+        raw = _backup("cmd_43.hex")
+        ms = M.parse_store(raw)
+        self.assertEqual(len(ms), 1)
+        self.assertEqual(ms[0].name, "M1")
+        self.assertEqual([e.describe() for e in ms[0].events],
+                         ["lctrl↓10ms", "grave↓10ms", "lctrl↑10ms", "grave↑10ms"])
+        self.assertEqual(M.build_store(ms), raw)          # byte-for-byte round trip
+
+    def test_steps(self):
+        from aula import macros as M
+        ev = M.parse_steps(["ctrl+c", "wait:100", "text:Hi"], delay=15)
+        self.assertEqual([e.describe() for e in ev[:4]],
+                         ["lctrl↓15ms", "c↓15ms", "c↑15ms", "lctrl↑115ms"])
+        self.assertEqual(ev[4].describe(), "lshift↓15ms")  # capital H
+        self.assertEqual(len(ev), 4 + 4 + 2)
+
+    def test_store_layout_and_entry(self):
+        from aula import macros as M
+        store = M.build_store([M.Macro("a", M.parse_steps(["x"])), M.Macro("b", M.parse_steps(["y"]))])
+        self.assertEqual(store[:4], bytes([8, 0, 11, 0]))  # 2 entries -> first macro at 8
+        self.assertEqual(len(M.parse_store(store)), 2)
+        self.assertEqual(M.macro_entry(1, M.REPEAT_TIMES, 3), bytes([3, 1, 3, 1]))
+        with self.assertRaises(ValueError):
+            M.parse_steps(["text:ç"])
+
+
 class PresetTests(unittest.TestCase):
     def test_synthwave(self):
         from aula import presets as T

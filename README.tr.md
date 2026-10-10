@@ -26,6 +26,8 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
   şelale, gökkuşağı çarkı, tuşa basınca yayılan dalgalar…
 - **Tuş başı RGB**: Çizimde tuşlara tıklayıp boya. Hazır temalar da var.
 - **Tuş atama**: Normal ve Fn katmanında. Her değişiklik klavyeden geri okunup doğrulanıyor.
+- **Makrolar**: Tuş kombinasyonları, yazı ve beklemeler. Bir kez, N kez, basılı
+  tutulduğu sürece ya da başka bir tuşa basılana kadar çalıştırılabiliyor.
 - **Cihaz ayarları**: Yan gösterge, tekerlek modu (ses ya da ışık), işletim sistemi
   modu (Windows / Android / Mac), Windows tuşu kilidi.
 - **Pil yüzdesi** (deneysel) ve bağlantı türü üst çubukta.
@@ -95,6 +97,10 @@ aula key-color --clear all=0010ff w=ff0000 a=ff0000 s=ff0000 d=ff0000
 aula preset synthwave                      # hazır tuş renk teması
 aula remap capslock lctrl                  # geri al: aula remap capslock capslock
 aula remap f1 esc -l 1                     # Fn katmanına atama
+aula macro set selam "text:merhaba" --key y -l 1        # Fn+Y "merhaba" yazar
+aula macro set yapistir "ctrl+c" "wait:100" "ctrl+v" --key f1 --repeat 2
+aula macro list                            # kayıtlı makrolar ve atandıkları tuşlar
+aula macro delete selam                    # tuşu fabrika işlevine döner
 aula side-light breathing                  # off | fill | breathing | static
 aula knob lighting                         # media | lighting
 aula os mac                                # windows | android | mac
@@ -104,7 +110,9 @@ aula restore ~/aula-yedek
 ```
 
 Türkçe Q klavyede `ğ ü ş ö ç ı` harfleri de tuş adı olarak kullanılabilir, örneğin
-`aula key-color ğ=ff0000 ş=00ff00`.
+`aula key-color ğ=ff0000 ş=00ff00`. Makrolardaki `text:` adımları ABD düzenindeki tuş
+konumlarını gönderir. Türkçe Q'da yeri aynı olan harfleri kullan (ör. "merhaba" olur,
+"ı/i" ve Türkçe karakterler farklı çıkar).
 
 Renk adları: `red` (kırmızı), `green` (yeşil), `blue` (mavi), `yellow` (sarı),
 `purple` (mor), `cyan` (camgöbeği), `white` (beyaz), `multi` (gökkuşağı).
@@ -154,7 +162,8 @@ blokta tutuluyor: 128 baytlık ışık bloğu, katman başına 504 baytlık tuş
 
 - [ ] Kablolu mod (aynı veri, farklı iletim katmanı)
 - [x] Bluetooth
-- [ ] Makrolar
+- [x] Makrolar
+- [ ] GUI'de klavyeden makro kaydetme
 - [ ] Daha fazla tema
 
 ## Katkı

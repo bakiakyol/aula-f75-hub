@@ -318,6 +318,14 @@ class Keyboard:
         data = self.read(P.CMD_PROFILE)
         return data[0] if data and data[0] <= 100 else None
 
+    def get_macro_store(self) -> bytes:
+        return self.read(P.CMD_SET_MACRO, 0)
+
+    def set_macro_store(self, raw: bytes) -> None:
+        if len(raw) != 512:
+            raise ValueError("macro store block must be 512 bytes")
+        self.write(P.CMD_SET_MACRO, raw, 0)
+
     def get_palette(self) -> bytes:
         return self.read(P.CMD_SET_PALETTE)
 

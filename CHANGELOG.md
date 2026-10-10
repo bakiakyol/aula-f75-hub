@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 – 2026-10-10
+
+- Macros: key combos, typed text and delays; run once, N times, while held or
+  until another key is pressed (`aula macro …` and a Macros page in the GUI)
+- Deleting a macro gives its key the factory function back and renumbers the
+  keys of later macros
+
 ## 0.2.0 – 2026-10-10
 
 - Bluetooth verified: effects, per-key colors, remapping, status

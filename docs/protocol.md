@@ -62,7 +62,7 @@ every key release. This is a firmware quirk and harmless.
 |---|---|---|---|
 | 0x01 | 0x41 | 504 | Keymap, sub = layer (0 base, 1 Fn, 2-3 empty) |
 | 0x02 | 0x42 | 378 | Per-key RGB (effect 32), planar: R[126] G[126] B[126] |
-| 0x03 | 0x43 | 512-byte blocks | Macro storage, sub = block number (not decoded) |
+| 0x03 | 0x43 | 512-byte blocks | Macro storage, sub = block number (see "Macros") |
 | 0x04 | 0x44 | 128 | LED config block |
 | 0x06 | – | 1 | Factory reset (untested) |
 | 0x07 | – | 1 | Read through a separate helper; probably battery/link status |
@@ -119,6 +119,30 @@ the per-key table after it has been re-sent; 32 shows it immediately.
 - Matrix indices are in `aula/keymap.py`. On the hardware, 53 = RAlt and 59 = Fn
   (KB.ini has these two labels the wrong way round).
 
+## Macros
+
+From `StMacro_To_HdMacro` in the official app, checked against the factory macro
+("M1": Ctrl+\`) and on hardware.
+
+Store (block 0 of command 0x03/0x43, 512 bytes; blocks 1-2 read back as zeros):
+
+```
+header   [address u16 LE, size u16 LE] per macro; the first address equals the
+         header size, which gives the count
+macro    [name length in bytes] [name] [event × n]
+event    [ (kind << 4) | delay bits 19..16 | 0x80 if release,  delay bits 15..8,
+           delay bits 7..0,  code ]
+         kind 0 key (HID usage), 1 modifier (E0-E7), 2 mouse button,
+         3 / 4 mouse move X / Y, 5 wheel; delay in ms until the next event
+```
+
+The app writes names as UTF-16LE; the factory macro uses plain ASCII.
+
+Keymap entry of a key that runs a macro: `[03, mode, count, macro index]` with
+mode 1 = run `count` times, 2 = repeat while held, 4 = repeat until any key is
+pressed. A plain key entry is `[00, modifiers, key 2, key 1]`, so two-key combos
+can also be assigned without a macro.
+
 ## Default Fn layer (layer 1)
 
 From KB.ini `[FN1]` and the keyboard's layer-1 table; behavior notes from the owner.
@@ -152,5 +176,4 @@ Bluetooth) and of the OS mode (W or E) in white, on top of the running effect.
 
 ## Open questions
 
-- Macro format (0x03/0x43): the header reads `04 00 13 00 02 4d 31 10 00 0a e0 ...`.
 - Wired transport (`CDevG5KB::AccessData`, around `0x48b350`).
