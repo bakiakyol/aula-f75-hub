@@ -264,6 +264,48 @@ def parse_rgb(s: str) -> tuple[int, int, int]:
     return (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF
 
 
+# ---------------------------------------------------------------- palettes
+# Command 0x09 / 0x49: one palette per effect number 0-22, each holding the 7 colors
+# (RGB) that an effect's color setting 0-6 picks from, then 7 bytes of unknown
+# meaning that are kept as read. Verified on hardware: palette n belongs to effect n
+# (static 1, breathing 2, center-wave 13) and a write shows at once.
+PALETTE_LEN = 490
+PALETTE_COUNT = 23
+PALETTE_COLORS = 7
+DEFAULT_PALETTE = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
+                   (255, 0, 255), (0, 255, 255), (255, 255, 255)]  # factory, for every effect
+
+
+def _palette_offset(hw: int, color: int) -> int:
+    if not 0 <= hw < PALETTE_COUNT:
+        raise ValueError(f"effect {hw} has no palette")
+    if not 0 <= color < PALETTE_COLORS:
+        raise ValueError(f"color must be 0-{PALETTE_COLORS - 1} ({', '.join(COLORS[:PALETTE_COLORS])})")
+    return hw * PALETTE_COLORS * 3 + color * 3
+
+
+def palette_color(raw: bytes, hw: int, color: int) -> tuple[int, int, int]:
+    o = _palette_offset(hw, color)
+    return raw[o], raw[o + 1], raw[o + 2]
+
+
+def set_palette_color(raw: bytes, hw: int, color: int, rgb: tuple[int, int, int]) -> bytes:
+    o = _palette_offset(hw, color)
+    b = bytearray(raw)
+    b[o:o + 3] = bytes(rgb)
+    return bytes(b)
+
+
+def reset_palette(raw: bytes, hw: int) -> bytes:
+    for color, rgb in enumerate(DEFAULT_PALETTE):
+        raw = set_palette_color(raw, hw, color, rgb)
+    return raw
+
+
+def rgb_hex(rgb: tuple[int, int, int]) -> str:
+    return "#%02x%02x%02x" % rgb
+
+
 # ------------------------------------------------------------------ keymap
 def matrix_entry(raw: bytes, index: int) -> bytes:
     return raw[4 * index:4 * index + 4]

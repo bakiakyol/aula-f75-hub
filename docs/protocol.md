@@ -66,10 +66,26 @@ every key release. This is a firmware quirk and harmless.
 | 0x04 | 0x44 | 128 | LED config block |
 | 0x06 | – | 1 | Factory reset (untested) |
 | 0x07 | – | 1 | Read through a separate helper; probably battery/link status |
-| 0x09 | 0x49 | 490 | Effect palettes: 7 colors × RGB per effect (writing untested) |
+| 0x09 | 0x49 | 490 | Effect palettes (see "Effect palettes") |
 | 0x0A | 0x4A | 1-2 | Profile per the app. The reply `64 01`: first byte is probably the **battery %** (read 100 while the Fn+B gauge showed 10/10; unconfirmed at lower charge) |
 | 0x0B | – | ? | Screen parameters (the F75 has no screen) |
 | 0x88 / 0x8E | – | – | Real-time lighting / music data (no ack, untested) |
+
+## Effect palettes (0x09 / 0x49, 490 bytes)
+
+```
+palette × 23   7 colors × [R, G, B] = 21 bytes; palette n belongs to effect number n
+tail           7 bytes, factory 03 00 00 00 00 cd 01 (meaning unknown, kept as read)
+```
+
+An effect's color setting 0-6 (LED block) picks one of the 7 colors of its own
+palette. All 23 palettes are the same at the factory: red, green, blue, yellow,
+magenta, cyan, white. Verified on hardware by giving palettes distinct colors and
+narrowing down which one the keyboard showed: static (1) uses palette 1, breathing
+(2) palette 2, center-wave (13) palette 13 (also through color slot 3). A write is
+acknowledged like any other, reads back unchanged and shows at once. The official
+app never offers more than the 7 named colors, so this is how this tool gives an
+effect any RGB color.
 
 ## LED config block (0x44, 128 bytes)
 

@@ -205,4 +205,6 @@ class Keyboard:
         return self.read(P.CMD_SET_PALETTE)
 
     def set_palette(self, raw: bytes) -> None:
+        if len(raw) != P.PALETTE_LEN:
+            raise ValueError(f"effect palettes must be {P.PALETTE_LEN} bytes")
         self.write(P.CMD_SET_PALETTE, raw)

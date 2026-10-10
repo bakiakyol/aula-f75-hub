@@ -23,7 +23,8 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
 ## Özellikler
 
 - **15 ışık efekti**, renk, parlaklık ve hız ayarıyla: nefes, yağmur damlası, yılan,
-  şelale, gökkuşağı çarkı, tuşa basınca yayılan dalgalar…
+  şelale, gökkuşağı çarkı, tuşa basınca yayılan dalgalar… Tek renkli efektlerde
+  sadece 7 hazır renk değil, **istediğin her RGB rengi** kullanılabiliyor.
 - **Tuş başı RGB**: Çizimde tuşlara tıklayıp boya. 9 hazır tema da var.
 - **Tuş atama**: Normal ve Fn katmanında. Her değişiklik klavyeden geri okunup doğrulanıyor.
 - **Makrolar**: Tuş kombinasyonları, yazı ve beklemeler. Bir kez, N kez, basılı
@@ -86,7 +87,8 @@ aula gui
 ```
 
 Bir tuşa tıklayıp seç (**Ctrl+tık** ile birden fazla), sonra klavyenin altından bir
-renk seç. Soldaki sayfalardan efekti değiştirebilir, tuş atayabilir, yan göstergeyi,
+renk seç. Lighting sayfasında **Color** satırındaki renk düğmesi çalışan efekte
+istediğin rengi verir, **Factory colors** bunu geri alır. Soldaki sayfalardan efekti değiştirebilir, tuş atayabilir, yan göstergeyi,
 tekerleği ve işletim sistemi modunu ayarlayabilir, yedek alabilirsin.
 
 ### Komut satırı
@@ -95,6 +97,8 @@ tekerleği ve işletim sistemi modunu ayarlayabilir, yedek alabilirsin.
 aula info                                  # efekt, parlaklık, pil, yan gösterge, tekerlek…
 aula effects                               # efekt ve renk listesi
 aula effect breathing -c blue -b 9 -s 2    # -c renk, -b parlaklık 0-9, -s hız 0-4
+aula effect breathing --rgb ff6000         # bu efekte istediğin renk (seçili rengin yerine geçer)
+aula palette                               # her efektin renkleri; --reset fabrika renklerine döndürür
 aula key-color --clear all=0010ff w=ff0000 a=ff0000 s=ff0000 d=ff0000
 aula preset synthwave                      # hazır tuş renk teması
 aula remap capslock lctrl                  # geri al: aula remap capslock capslock
