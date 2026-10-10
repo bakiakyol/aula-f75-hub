@@ -56,7 +56,18 @@ _TR_Q_KEYS = {  # xkb "tr" (Turkish Q)
     "s": "sSß", "lbracket": "ğĞ", "rbracket": "üÜ~", "semicolon": "şŞ", "quote": "iİ",
     "backslash": ",;`", "iso_backslash": "<>|", "comma": "öÖ", "period": "çÇ", "slash": ".:",
 }
-LAYOUTS = {"us": "English (US)", "tr": "Turkish Q"}
+# macOS: Apple's "Turkish Q - PC" is the PC layout, except that its Option level
+# isn't known well enough here, so it is left out. Apple's own "Turkish Q" has the
+# Turkish letters in the PC places, but its punctuation is elsewhere: letters,
+# digits and white space only.
+_TR_MAC_PC_KEYS = {key: chars[:2] for key, chars in _TR_Q_KEYS.items()}
+_TR_MAC_KEYS = {
+    **{c: c + c.upper() for c in "abcdefghjklmnopqrstuvwxyz"}, "i": "ıI", "quote": "iİ",
+    "lbracket": "ğĞ", "rbracket": "üÜ", "semicolon": "şŞ", "comma": "öÖ", "period": "çÇ",
+    **{str(d): str(d) for d in range(10)}, "space": " ", "enter": "\n", "tab": "\t",
+}
+LAYOUTS = {"us": "English (US)", "tr": "Turkish Q", "tr_mac_pc": "Turkish Q - PC (Mac)",
+           "tr_mac": "Turkish Q (Mac, letters only)"}
 
 
 def _char_table(keys: dict[str, str]) -> dict[str, tuple[str, list[str]]]:
@@ -69,7 +80,8 @@ def _char_table(keys: dict[str, str]) -> dict[str, tuple[str, list[str]]]:
     return table
 
 
-_CHARS = {"us": _char_table(_US_KEYS), "tr": _char_table(_TR_Q_KEYS)}
+_TEXT_KEYS = {"us": _US_KEYS, "tr": _TR_Q_KEYS, "tr_mac_pc": _TR_MAC_PC_KEYS, "tr_mac": _TR_MAC_KEYS}
+_CHARS = {name: _char_table(keys) for name, keys in _TEXT_KEYS.items()}
 
 
 def detect_layout() -> str:
@@ -232,7 +244,6 @@ def parse_steps(steps: list[str], delay: int = 20, layout: str = "us") -> list[E
 # ------------------------------------------------------------ recording
 _SHORT = {"lctrl": "ctrl", "lshift": "shift", "lalt": "alt", "lwin": "win", "ralt": "altgr"}
 _LEVEL_MODS = ((), ("lshift",), ("ralt",))
-_TEXT_KEYS = {"us": _US_KEYS, "tr": _TR_Q_KEYS}
 PAUSE_MIN = 100  # ms; shorter gaps between recorded steps aren't kept as waits
 HOLD_MIN = 300  # ms; a key held this long while others are pressed is a real hold
 
