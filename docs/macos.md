@@ -39,6 +39,11 @@ keyboard. If `aula devices` lists the keyboard but every other command says
 
 ## Good to know
 
+- **Use the 2.4G dongle.** On macOS, settings can't be read over Bluetooth: the
+  Bluetooth link always loses the same parts of the keyboard's replies, so commands
+  stop with "settings can't be read over Bluetooth on macOS". Typing over Bluetooth
+  works as usual; only configuring doesn't. See "Bluetooth packet loss" in
+  [protocol.md](protocol.md).
 - **Close the official AULA app** if it runs; only one program can use the
   configuration channel.
 - The tool waits until no key is held before it talks to the keyboard (see
@@ -83,7 +88,7 @@ output. Leave the keyboard alone while a command runs, unless a step says otherw
 | 17 | GUI → Lighting: pick **breathing**, click the color button next to **Color**, choose any color; then **Factory colors** | the keyboard breathes in that color, then red again; pick your old effect again afterwards |
 | 18 | GUI → Device | side light, knob, OS mode, Windows key lock and sleep match `aula info` |
 | 19 | GUI → Macros → **Record**, type `deneme`, press Shift+A, Command+C and ←, click **Stop** (don't save) | Steps: `text:denemeA`, `win+c`, `left` |
-| 20 | Switch to **Bluetooth**, pair it in System Settings, then `aula devices` and `aula info` | `Bluetooth … (supported)`; info as in step 3 |
-| 21 | `aula restore ~/aula-backup` | everything as at the start |
+| 20 | Switch to **Bluetooth**, pair it in System Settings, then `aula devices` and `aula info` | `Bluetooth … (supported)`; `aula info` stops after about 2 s with "settings can't be read over Bluetooth on macOS … Switch the keyboard to the 2.4G dongle" |
+| 21 | Switch back to **2.4G**, then `aula restore ~/aula-backup` | everything as at the start |
 
 Please also note your macOS version and whether it's an Apple silicon or Intel Mac.

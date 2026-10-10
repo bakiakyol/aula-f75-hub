@@ -44,6 +44,20 @@ attempt spreads the losses; right after a write the keyboard is busy saving and
 loses even more, so reads wait 0.5 s after a write. Writes are unaffected: each
 packet is acknowledged before the next one is sent.
 
+On **macOS** the losses don't move, so this never completes. Measured on macOS
+27.0.1 (Apple silicon) with a 10-packet reply (0x44): the first two packets arrive,
+then about one in four, roughly 15 ms apart (the Bluetooth connection interval).
+Over 30 attempts with the random delay, packets 0, 1, 5 and 9 arrived nearly every
+time and 3, 4 and 7 never did. Sending a second read request shortly after the first
+gets no reply at all. Single-packet replies (e.g. 0x4A) arrive fine. So on macOS
+multi-packet reads over Bluetooth give up quickly and point to the 2.4G dongle.
+
+The official app doesn't support Bluetooth at all: its device files
+(`Dev/kb/{1,wired,F75KR}/KB.ini`) list only 258A:010C and 3554:FA09, not FA07. Its
+read function (`OemDrv.exe` 0x486500) sends the same request as above, resends the
+whole request when a packet is missing and gives up after 2 attempts; there is no
+speed, interval or offset field.
+
 ### Dropped key releases
 
 While the keyboard answers configuration traffic it can drop the **key release**
