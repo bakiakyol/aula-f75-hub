@@ -69,18 +69,21 @@ output. Leave the keyboard alone while a command runs, unless a step says otherw
 | 3 | `aula info` | effect, brightness, battery, side light, knob, OS mode, sleep, as on the keyboard |
 | 4 | `aula effect breathing -c blue -b 9` | the keyboard breathes blue |
 | 5 | `aula restore ~/aula-backup` | the keyboard looks as before step 4 |
-| 6 | Run `aula info` and **keep holding Shift** for 2 seconds, then let go | it waits while Shift is held and finishes after you let go |
-| 7 | Run `aula info` and keep holding Shift for 7 seconds | `a key seems to be held down…` |
-| 8 | After all of the above | no key repeats by itself |
-| 9 | `aula macro list` | `0: M1  [not assigned]` (plus your own macros) |
-| 10 | `aula macro set test "text:Merhaba dünya iyi günler" --key y -l 1`, then **Fn+Y** in TextEdit | `Merhaba dünya iyi günler` (with a Turkish Q input source; the message says which layout was used) |
-| 11 | `aula macro delete test` | `Deleted macro 'test'`; Fn+Y does what it did before |
-| 12 | `aula sleep` | the sleep setting you chose |
-| 13 | Open **AULA F75** from Launchpad | window opens; the drawing shows your key colors; the header shows "2.4G dongle · Battery …" |
-| 14 | GUI → Lighting: pick another effect, then the old one again | the keyboard follows |
-| 15 | GUI → Device | side light, knob, OS mode, Windows key lock and sleep match `aula info` |
-| 16 | GUI → Macros → **Record**, type `deneme`, press Shift+A, Command+C and ←, click **Stop** (don't save) | Steps: `text:denemeA`, `win+c`, `left` |
-| 17 | Switch to **Bluetooth**, pair it in System Settings, then `aula devices` and `aula info` | `Bluetooth … (supported)`; info as in step 3 |
-| 18 | `aula restore ~/aula-backup` | everything as at the start |
+| 6 | `aula effect breathing -c red --rgb ff6000`, then `aula palette breathing` | the keyboard breathes orange; the palette line shows `red=#ff6000` |
+| 7 | `aula palette --reset`, then `aula restore ~/aula-backup` | the keyboard looks as before step 6 |
+| 8 | Run `aula info` and **keep holding Shift** for 2 seconds, then let go | it waits while Shift is held and finishes after you let go |
+| 9 | Run `aula info` and keep holding Shift for 7 seconds | `a key seems to be held down…` |
+| 10 | After all of the above | no key repeats by itself |
+| 11 | `aula macro list` | `0: M1  [not assigned]` (plus your own macros) |
+| 12 | `aula macro set test "text:Merhaba dünya iyi günler" --key y -l 1`, then **Fn+Y** in TextEdit | `Merhaba dünya iyi günler` (with a Turkish Q input source; the message says which layout was used) |
+| 13 | `aula macro delete test` | `Deleted macro 'test'`; Fn+Y does what it did before |
+| 14 | `aula sleep` | the sleep setting you chose |
+| 15 | Open **AULA F75** from Launchpad | window opens; the drawing shows your key colors; the header shows "2.4G dongle · Battery …" |
+| 16 | GUI → Lighting: pick another effect, then the old one again | the keyboard follows |
+| 17 | GUI → Lighting: pick **breathing**, click the color button next to **Color**, choose any color; then **Factory colors** | the keyboard breathes in that color, then red again; pick your old effect again afterwards |
+| 18 | GUI → Device | side light, knob, OS mode, Windows key lock and sleep match `aula info` |
+| 19 | GUI → Macros → **Record**, type `deneme`, press Shift+A, Command+C and ←, click **Stop** (don't save) | Steps: `text:denemeA`, `win+c`, `left` |
+| 20 | Switch to **Bluetooth**, pair it in System Settings, then `aula devices` and `aula info` | `Bluetooth … (supported)`; info as in step 3 |
+| 21 | `aula restore ~/aula-backup` | everything as at the start |
 
 Please also note your macOS version and whether it's an Apple silicon or Intel Mac.
