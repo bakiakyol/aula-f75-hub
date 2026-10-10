@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Platform code split out into `aula/backends/` (groundwork for Windows and
+  macOS); no change in behavior on Linux
+- Sleep time "never" (0) verified on hardware
+- Any RGB color for single-color effects: `aula effect NAME --rgb RRGGBB`,
+  `aula palette [NAME] [--reset]`, and a color button plus "Factory colors" on
+  the GUI's Lighting page. Each effect has its own 7-color palette (command 0x09),
+  verified on hardware; the GUI preview and `aula info` show the real color
+- Backups now include the effect palettes
+
 ## 0.4.0 – 2026-10-10
 
 - GUI: record macros from the keyboard (Record / Stop on the Macros page). Typed

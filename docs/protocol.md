@@ -66,10 +66,26 @@ every key release. This is a firmware quirk and harmless.
 | 0x04 | 0x44 | 128 | LED config block |
 | 0x06 | – | 1 | Factory reset (untested) |
 | 0x07 | – | 1 | Read through a separate helper; probably battery/link status |
-| 0x09 | 0x49 | 490 | Effect palettes: 7 colors × RGB per effect (writing untested) |
+| 0x09 | 0x49 | 490 | Effect palettes (see "Effect palettes") |
 | 0x0A | 0x4A | 1-2 | Profile per the app. The reply `64 01`: first byte is probably the **battery %** (read 100 while the Fn+B gauge showed 10/10; unconfirmed at lower charge) |
 | 0x0B | – | ? | Screen parameters (the F75 has no screen) |
 | 0x88 / 0x8E | – | – | Real-time lighting / music data (no ack, untested) |
+
+## Effect palettes (0x09 / 0x49, 490 bytes)
+
+```
+palette × 23   7 colors × [R, G, B] = 21 bytes; palette n belongs to effect number n
+tail           7 bytes, factory 03 00 00 00 00 cd 01 (meaning unknown, kept as read)
+```
+
+An effect's color setting 0-6 (LED block) picks one of the 7 colors of its own
+palette. All 23 palettes are the same at the factory: red, green, blue, yellow,
+magenta, cyan, white. Verified on hardware by giving palettes distinct colors and
+narrowing down which one the keyboard showed: static (1) uses palette 1, breathing
+(2) palette 2, center-wave (13) palette 13 (also through color slot 3). A write is
+acknowledged like any other, reads back unchanged and shows at once. The official
+app never offers more than the 7 named colors, so this is how this tool gives an
+effect any RGB color.
 
 ## LED config block (0x44, 128 bytes)
 
@@ -82,7 +98,7 @@ every key release. This is a firmware quirk and harmless.
 | 18 | **Side light mode** (white bar next to Esc, Fn+Left Shift): 0 off, 1 fill top to bottom, 2 breathing, 3 static |
 | 26 | **Knob mode** (long-press the knob to toggle): 0 media (turn = volume, press = mute; Shift/Win blink blue), 1 lighting (turn = brightness, press = next effect; Shift/Win blink green) |
 | 27 | **OS mode**: 0 Windows (Fn+W), 1 Android (Fn+Q), 2 Mac (Fn+E). The keymap itself doesn't change |
-| 24 | **Sleep timer** (2.4G / Bluetooth) in units of 30 s. Factory value 2 = 1 minute; 2 and 4 timed on hardware (lights went off after 1 and 2 minutes). The app offers 60-1200 s (KB.ini `SleepUI` / `SleepHW`, the latter being seconds / 30) and writes 0 when sleep is turned off (not tested) |
+| 24 | **Sleep timer** (2.4G / Bluetooth) in units of 30 s. Factory value 2 = 1 minute; 2 and 4 timed on hardware (lights went off after 1 and 2 minutes). The app offers 60-1200 s (KB.ini `SleepUI` / `SleepHW`, the latter being seconds / 30) and writes 0 when sleep is turned off: verified, with 0 the lights stayed on overnight |
 | 19-21 | side light color / brightness / speed according to the app; no visible effect on the F75 (its side LEDs are white only: color values 0-7 all showed white) |
 | 56-57 | ? (`81 f0`) |
 | 58 + 2·(hw−1) | settings for effect hw: `[brightness 0-9, (speed 0-4 << 4) \| color]` |

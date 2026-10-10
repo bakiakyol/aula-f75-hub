@@ -218,6 +218,34 @@ class MacroTests(unittest.TestCase):
             M.parse_steps(["text:ğ"], layout="us")
 
 
+class PaletteTests(unittest.TestCase):
+    def test_factory_palettes(self):
+        raw = _backup("cmd_49.hex")
+        self.assertEqual(len(raw), P.PALETTE_LEN)
+        for hw in range(P.PALETTE_COUNT):
+            self.assertEqual([P.palette_color(raw, hw, c) for c in range(7)], P.DEFAULT_PALETTE)
+
+    def test_set_and_reset(self):
+        raw = _backup("cmd_49.hex")
+        changed = P.set_palette_color(raw, 2, 0, (255, 96, 0))   # breathing's red -> orange
+        self.assertEqual(changed[2 * 21:2 * 21 + 3], bytes([255, 96, 0]))
+        self.assertEqual(P.palette_color(changed, 1, 0), (255, 0, 0))   # static untouched
+        self.assertEqual(changed[-7:], raw[-7:])                         # unknown tail kept
+        self.assertEqual(P.reset_palette(changed, 2), raw)
+        self.assertEqual(P.rgb_hex((255, 96, 0)), "#ff6000")
+        for hw, color in ((23, 0), (1, 7)):
+            with self.assertRaises(ValueError):
+                P.palette_color(raw, hw, color)
+
+    def test_preview_uses_palette(self):
+        from aula import animation as A
+        led = P.LedConfig(_backup("cmd_44.hex"))
+        led.effect = 1
+        led.set_slot(1, P.EffectSlot(9, 0, 0))
+        pal = P.set_palette_color(_backup("cmd_49.hex"), 1, 0, (255, 96, 0))
+        self.assertEqual(set(A.frame(led, 0.0, pal).values()), {(255, 96, 0)})
+
+
 class PresetTests(unittest.TestCase):
     def test_synthwave(self):
         from aula import presets as T

@@ -14,9 +14,8 @@ from . import protocol as P
 
 RGB = tuple[int, int, int]
 
-# Colors 0-6 as stored in the keyboard's palette (command 0x49)
-PALETTE = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
-           (255, 0, 255), (0, 255, 255), (255, 255, 255)]
+# Factory colors 0-6 (the keyboard's palettes, command 0x49, can change them per effect)
+PALETTE = P.DEFAULT_PALETTE
 
 REACTIVE = {4, 7, 12}  # these react to key presses; the preview plays a demo
 
@@ -53,8 +52,11 @@ def is_animated(led: P.LedConfig) -> bool:
     return led.effect not in (1, P.EFFECT_BY_NAME["custom"].hw) and 1 <= led.effect <= P.LED_SLOTS
 
 
-def frame(led: P.LedConfig, t: float) -> dict[int, RGB] | None:
-    """Colors for every key at time t (seconds). None means: show the custom table."""
+def frame(led: P.LedConfig, t: float, palette: bytes | None = None) -> dict[int, RGB] | None:
+    """Colors for every key at time t (seconds). None means: show the custom table.
+
+    `palette` is the keyboard's effect palettes (0x49), for effects given their own colors.
+    """
     hw = led.effect
     if hw == P.EFFECT_BY_NAME["custom"].hw:
         return None
@@ -66,6 +68,8 @@ def frame(led: P.LedConfig, t: float) -> dict[int, RGB] | None:
     sp = 0.4 + 0.4 * slot.speed
     single = e is not None and e.color and slot.color < len(PALETTE)
     base = PALETTE[slot.color] if single else None
+    if single and palette is not None and hw < P.PALETTE_COUNT:
+        base = P.palette_color(palette, hw, slot.color)
 
     def color(x: float, v: float = 1.0) -> RGB:
         """The effect's color at horizontal position x, at intensity v."""

@@ -24,7 +24,8 @@ keyboard.
 ## Features
 
 - **15 lighting effects** with color, brightness and speed: breathing, raindrops,
-  snake, waterfall, rainbow wheel, reactive ripples…
+  snake, waterfall, rainbow wheel, reactive ripples… Single-color effects can use
+  **any RGB color**, not just the 7 built-in ones.
 - **Per-key RGB**: click keys on the drawing and paint them. Includes 9 ready-made themes.
 - **Key remapping** on the base and Fn layers, each change read back and verified.
 - **Macros**: key combos, typed text and delays, run once, N times, while held or
@@ -86,7 +87,8 @@ aula gui
 ```
 
 Click a key to select it (**Ctrl+click** adds more), then pick a color below the
-board. The pages on the left change the effect, remap keys, adjust the side light,
+board. On the Lighting page, the color button next to **Color** gives the running
+effect any color you like; **Factory colors** undoes it. The pages on the left change the effect, remap keys, adjust the side light,
 knob and OS mode, and make backups.
 
 ### Command line
@@ -95,6 +97,8 @@ knob and OS mode, and make backups.
 aula info                                  # effect, brightness, battery, side light, knob…
 aula effects                               # list effects and colors
 aula effect breathing -c blue -b 9 -s 2    # -c color, -b brightness 0-9, -s speed 0-4
+aula effect breathing --rgb ff6000         # any color for this effect (replaces the chosen one)
+aula palette                               # colors of every effect; --reset puts the factory ones back
 aula key-color --clear all=0010ff w=ff0000 a=ff0000 s=ff0000 d=ff0000
 aula preset synthwave                      # built-in per-key theme
 aula remap capslock lctrl                  # undo: aula remap capslock capslock

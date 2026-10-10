@@ -61,7 +61,7 @@ SWATCHES = [
 ]
 
 
-def readout(led: P.LedConfig, selected: int) -> tuple[str, str]:
+def readout(led: P.LedConfig, selected: int, palette: bytes | None = None) -> tuple[str, str]:
     """Left/right text of the instrument strip under the board (real values only)."""
     hw = led.effect
     e = P.EFFECT_BY_HW.get(hw)
@@ -71,7 +71,12 @@ def readout(led: P.LedConfig, selected: int) -> tuple[str, str]:
     elif 1 <= hw <= P.LED_SLOTS:
         slot = led.slot(hw)
         if e is None or e.color:
-            parts.append(P.COLORS[slot.color].upper())
+            name = P.COLORS[slot.color].upper() if slot.color < len(P.COLORS) else str(slot.color)
+            if palette is not None and slot.color < P.PALETTE_COLORS and hw < P.PALETTE_COUNT:
+                rgb = P.palette_color(palette, hw, slot.color)
+                if rgb != P.DEFAULT_PALETTE[slot.color]:
+                    name = P.rgb_hex(rgb).upper()
+            parts.append(name)
         parts.append(f"BRIGHTNESS {slot.brightness}/9")
         if e is None or e.speed:
             parts.append(f"SPEED {slot.speed}/4")
@@ -330,6 +335,7 @@ class AulaWindow(Gtk.Window):
         super().__init__(title="AULA F75")
         self.set_default_size(980, 680)
         self.led: P.LedConfig | None = None
+        self.palette: bytes | None = None  # effect palettes (0x49)
         self.updating = False  # True while widgets are filled from device state
         self.worker = Worker(self.show_error)
         self.recording: list[tuple[str, bool, int]] | None = None  # macro recording in progress
@@ -457,13 +463,23 @@ class AulaWindow(Gtk.Window):
         for i, c in enumerate(P.COLORS):
             self.color_combo.append(str(i), c)
         self.color_combo.connect("changed", self.on_led_widget)
+        self.color_rgb = Gtk.ColorButton(use_alpha=False)
+        self.color_rgb.set_tooltip_text("Any color: replaces the chosen color for this effect")
+        self.color_rgb.connect("color-set", self.on_effect_rgb)
+        self.color_reset = Gtk.Button(label="Factory colors")
+        self.color_reset.set_tooltip_text("Put this effect's 7 factory colors back")
+        self.color_reset.connect("clicked", self.on_effect_colors_reset)
+        color_row = Gtk.Box(spacing=6)
+        color_row.pack_start(self.color_combo, True, True, 0)
+        color_row.pack_start(self.color_rgb, False, False, 0)
+        color_row.pack_start(self.color_reset, False, False, 0)
         self.bright = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 9, 1)
         self.speed = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 4, 1)
         for sc in (self.bright, self.speed):
             sc.set_digits(0)
             sc.set_hexpand(True)
             sc.connect("value-changed", self.on_led_widget)
-        rows = [("Effect", self.effect_combo), ("Color", self.color_combo),
+        rows = [("Effect", self.effect_combo), ("Color", color_row),
                 ("Brightness", self.bright), ("Speed", self.speed)]
         for r, (text, w) in enumerate(rows):
             g.attach(self._label(text), 0, r, 1, 1)
@@ -611,13 +627,14 @@ class AulaWindow(Gtk.Window):
 
         def job(kb):
             return (kb.mode, kb.get_led(), kb.get_custom(), kb.get_battery(),
-                    M.parse_store(kb.get_macro_store()))
+                    M.parse_store(kb.get_macro_store()), kb.get_palette())
 
         self.worker.submit(job, self.loaded)
 
     def loaded(self, result):
-        mode, led, custom, battery, macros = result
+        mode, led, custom, battery, macros, palette = result
         self.led = led
+        self.palette = palette
         self.fill_macros(macros)
         self.view.colors = P.colors_from_custom(custom)
         self.view.queue_draw()
@@ -642,6 +659,11 @@ class AulaWindow(Gtk.Window):
         self.bright.set_sensitive(has_slot)
         self.speed.set_sensitive(has_slot and (e is None or e.speed))
         self.color_combo.set_sensitive(has_slot and (e is None or e.color))
+        rgb = self._effect_rgb()
+        self.color_rgb.set_sensitive(rgb is not None)
+        self.color_reset.set_sensitive(rgb is not None)
+        if rgb is not None:
+            self.color_rgb.set_rgba(Gdk.RGBA(*(c / 255 for c in rgb), 1.0))
         self.side_combo.set_active_id(str(led.side_mode))
         self.knob_combo.set_active_id(str(led.knob_mode))
         self.os_combo.set_active_id(str(led.os_mode))
@@ -656,7 +678,7 @@ class AulaWindow(Gtk.Window):
 
     def update_readout(self):
         if self.led is not None:
-            left, right = readout(self.led, len(self.view.selected))
+            left, right = readout(self.led, len(self.view.selected), self.palette)
             self.readout_left.set_text(left)
             self.readout_right.set_text(right)
 
@@ -667,7 +689,7 @@ class AulaWindow(Gtk.Window):
             if animated or self.view.preview is not None or self.led.effect == 1:
                 motion = Gtk.Settings.get_default().get_property("gtk-enable-animations")
                 t = (GLib.get_monotonic_time() - self.t0) / 1e6 if motion else 1.0
-                self.view.preview = A.frame(self.led, t)
+                self.view.preview = A.frame(self.led, t, self.palette)
                 self.view.queue_draw()
         return True
 
@@ -693,6 +715,32 @@ class AulaWindow(Gtk.Window):
         led.sleep = int(self.sleep_combo.get_active_id())
         self.fill_widgets()
         self.send_led()
+
+    def _effect_rgb(self):
+        """The actual color the current effect shows, if it has a single one."""
+        led, e = self.led, P.EFFECT_BY_HW.get(self.led.effect)
+        if self.palette is None or e is None or not e.color or led.effect >= P.PALETTE_COUNT:
+            return None
+        color = led.slot(led.effect).color
+        return P.palette_color(self.palette, led.effect, color) if color < P.PALETTE_COLORS else None
+
+    def on_effect_rgb(self, button):
+        led = self.led
+        c = button.get_rgba()
+        rgb = (round(c.red * 255), round(c.green * 255), round(c.blue * 255))
+        color = led.slot(led.effect).color
+        self.palette = P.set_palette_color(self.palette, led.effect, color, rgb)
+        self.send_palette(f"{P.EFFECT_BY_HW[led.effect].name}: {P.COLORS[color]} → {P.rgb_hex(rgb)}")
+
+    def on_effect_colors_reset(self, _b):
+        hw = self.led.effect
+        self.palette = P.reset_palette(self.palette, hw)
+        self.send_palette(f"{P.EFFECT_BY_HW[hw].name}: factory colors")
+
+    def send_palette(self, message):
+        raw = self.palette
+        self.fill_widgets()
+        self.worker.submit(lambda kb: kb.set_palette(raw), lambda _r: self.say(message), key="palette")
 
     def send_led(self):
         raw = self.led.to_bytes()
