@@ -337,6 +337,8 @@ def cmd_macro_delete(kb: Keyboard, a) -> None:
 
 
 BACKUP = [  # (file, read function, write function)
+    # macro store first: macro keys in the keymaps point into it
+    ("cmd_43.hex", lambda kb: kb.get_macro_store(), lambda kb, d: kb.set_macro_store(d)),
     ("cmd_41.hex", lambda kb: kb.get_matrix(0), lambda kb, d: kb.set_matrix(d, 0)),
     ("cmd_41_layer1.hex", lambda kb: kb.get_matrix(1), lambda kb, d: kb.set_matrix(d, 1)),
     ("cmd_41_layer2.hex", lambda kb: kb.get_matrix(2), lambda kb, d: kb.set_matrix(d, 2)),

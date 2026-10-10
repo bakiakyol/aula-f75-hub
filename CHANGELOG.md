@@ -9,7 +9,9 @@
   `aula palette [NAME] [--reset]`, and a color button plus "Factory colors" on
   the GUI's Lighting page. Each effect has its own 7-color palette (command 0x09),
   verified on hardware; the GUI preview and `aula info` show the real color
-- Backups now include the effect palettes
+- Backups now include the effect palettes and the macro store, so a restore
+  also brings back the macros
+- GUI: no more "Gdk was imported without specifying a version" warning
 
 ## 0.4.0 – 2026-10-10
 
