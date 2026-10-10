@@ -9,10 +9,11 @@ keyboard is different: it goes through [hidapi](https://github.com/trezor/cython
 
 ## Installation
 
-You need [Homebrew](https://brew.sh).
+You need [Homebrew](https://brew.sh). macOS support is on the `port-macos` branch
+until it's merged:
 
 ```sh
-git clone https://github.com/bakiakyol/aula-f75-hub.git
+git clone -b port-macos https://github.com/bakiakyol/aula-f75-hub.git
 cd aula-f75-hub
 ./install-macos.sh
 ```
