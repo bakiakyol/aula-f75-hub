@@ -354,7 +354,7 @@ def cmd_devices(_kb, a) -> None:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="aula", description="AULA F75 configuration tool for Linux")
-    p.add_argument("--device", help="hidraw path (e.g. /dev/hidraw2); auto-detected if omitted")
+    p.add_argument("--device", help="device path as listed by 'aula devices'; auto-detected if omitted")
     sp = p.add_subparsers(dest="command", required=True)
 
     sp.add_parser("gui", help="open the graphical interface").set_defaults(f=cmd_gui, no_kb=True)

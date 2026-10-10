@@ -10,6 +10,8 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Baki Akyol" }]
 requires-python = ">=3.10"
+# Linux talks to /dev/hidraw directly; Windows and macOS go through hidapi
+dependencies = ["hidapi; sys_platform != 'linux'"]
 keywords = ["aula", "aula-f75", "keyboard", "rgb", "hidraw", "linux"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
@@ -30,4 +32,4 @@ gui = ["PyGObject"]
 aula = "aula.cli:main"
 
 [tool.setuptools]
-packages = ["aula"]
+packages = ["aula", "aula.backends"]

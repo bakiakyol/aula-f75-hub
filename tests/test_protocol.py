@@ -100,14 +100,14 @@ class CustomTableTests(unittest.TestCase):
 
 class KeyReportTests(unittest.TestCase):
     def test_dongle_reports(self):
-        from aula.device import _keys_down
+        from aula.backends.linux import _keys_down
         self.assertTrue(_keys_down(bytes([0, 0, 0x28, 0, 0, 0, 0, 0])))     # Enter on boot iface
         self.assertFalse(_keys_down(bytes(8)))
         self.assertTrue(_keys_down(bytes([4, 0, 0, 0, 0, 0, 1] + [0] * 14)))  # NKRO bit set
         self.assertIsNone(_keys_down(bytes([0x13] + [0] * 19)))             # config reply
 
     def test_bluetooth_reports(self):
-        from aula.device import _keys_down
+        from aula.backends.linux import _keys_down
         self.assertTrue(_keys_down(bytes([1, 0, 0, 0x28, 0, 0, 0, 0, 0]), True))
         self.assertFalse(_keys_down(bytes([1] + [0] * 8), True))
         self.assertTrue(_keys_down(bytes([2, 0, 0, 0, 0, 0, 1] + [0] * 14), True))

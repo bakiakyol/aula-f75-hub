@@ -17,6 +17,7 @@ gi.require_version("PangoCairo", "1.0")
 from gi.repository import Gdk, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 
 from . import animation as A  # noqa: E402
+from . import backends  # noqa: E402
 from . import keymap as K  # noqa: E402
 from . import macros as M  # noqa: E402
 from . import presets as T  # noqa: E402
@@ -37,7 +38,7 @@ UNLIT = (44, 47, 54)               # how an unlit key is drawn on the board
 CSS = b"""
 .desk { background-color: #101116; }
 .desk label { color: #8b92a0; }
-.readout { font-family: "Ubuntu Sans Mono"; font-size: 9pt; letter-spacing: 1px; }
+.readout { font-family: "Ubuntu Sans Mono", Consolas, Menlo, monospace; font-size: 9pt; letter-spacing: 1px; }
 .readout.value { color: #d7dae0; }
 .desk button {
     background-image: none; background-color: #1b1d22; color: #d7dae0;
@@ -48,6 +49,7 @@ CSS = b"""
 """
 
 
+UI_FONT = "Ubuntu Sans,Segoe UI,Helvetica Neue,sans"  # first one installed wins
 KNOB_RECT = (605, 30, 630, 57)  # drawn top right, next to F12
 ORIGINAL_BACKUP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backup")
 
@@ -220,7 +222,7 @@ class KeyboardView(Gtk.DrawingArea):
         cr.fill()
 
         layout = PangoCairo.create_layout(cr)
-        layout.set_font_description(Pango.FontDescription(f"Ubuntu Sans Medium {max(6.5, 7.2 * s):.1f}"))
+        layout.set_font_description(Pango.FontDescription(f"{UI_FONT} Medium {max(6.5, 7.2 * s):.1f}"))
         for idx, _name, label, rect in K.KEYS:
             x1, y1, x2, y2 = _key_rect(idx, rect)
             x, y, w, h = ox + x1 * s, oy + y1 * s, (x2 - x1) * s, (y2 - y1) * s
@@ -903,7 +905,7 @@ class AulaWindow(Gtk.Window):
     def on_record_key(self, _w, event):
         if self.recording is None:
             return False
-        name = K.EVDEV.get(event.hardware_keycode - 8)  # X11 keycode = Linux key code + 8
+        name = backends.GDK_KEYCODES.get(event.hardware_keycode)
         down = event.type == Gdk.EventType.KEY_PRESS
         if name is None:
             self.rec_skipped += down

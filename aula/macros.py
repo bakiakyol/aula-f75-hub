@@ -19,7 +19,6 @@ Keymap entry for a macro key: [0x03, repeat mode, repeat count, macro index]
                  4 = repeat until any key is pressed
 """
 
-import subprocess
 from dataclasses import dataclass, field
 
 from . import keymap as K
@@ -75,22 +74,8 @@ _CHARS = {"us": _char_table(_US_KEYS), "tr": _char_table(_TR_Q_KEYS)}
 
 def detect_layout() -> str:
     """'tr' when the computer uses the Turkish Q layout, otherwise 'us'."""
-    try:
-        out = subprocess.run(["setxkbmap", "-query"], capture_output=True, text=True, timeout=2).stdout
-        conf = {k.strip(): v.strip() for k, _, v in (ln.partition(":") for ln in out.splitlines())}
-        layout, variant = conf.get("layout", ""), conf.get("variant", "")
-    except (OSError, subprocess.SubprocessError):
-        layout = variant = ""
-    if not layout:
-        try:
-            with open("/etc/default/keyboard") as f:
-                conf = dict(ln.strip().partition("=")[::2] for ln in f if "=" in ln)
-            layout, variant = conf.get("XKBLAYOUT", "").strip('"'), conf.get("XKBVARIANT", "").strip('"')
-        except OSError:
-            pass
-    # several layouts are listed as "tr,us"; the first one is the default
-    first = layout.split(",")[0]
-    return "tr" if first == "tr" and variant.split(",")[0] in ("", "basic") else "us"
+    from . import backends
+    return backends.detect_layout()
 
 
 @dataclass
