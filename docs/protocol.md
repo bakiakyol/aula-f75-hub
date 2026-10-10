@@ -82,7 +82,7 @@ every key release. This is a firmware quirk and harmless.
 | 18 | **Side light mode** (white bar next to Esc, Fn+Left Shift): 0 off, 1 fill top to bottom, 2 breathing, 3 static |
 | 26 | **Knob mode** (long-press the knob to toggle): 0 media (turn = volume, press = mute; Shift/Win blink blue), 1 lighting (turn = brightness, press = next effect; Shift/Win blink green) |
 | 27 | **OS mode**: 0 Windows (Fn+W), 1 Android (Fn+Q), 2 Mac (Fn+E). The keymap itself doesn't change |
-| 24 | **Sleep timer** (2.4G / Bluetooth) in units of 30 s. Factory value 2 = 1 minute; 2 and 4 timed on hardware (lights went off after 1 and 2 minutes). The app offers 60-1200 s (KB.ini `SleepUI` / `SleepHW`, the latter being seconds / 30) and writes 0 when sleep is turned off (not tested) |
+| 24 | **Sleep timer** (2.4G / Bluetooth) in units of 30 s. Factory value 2 = 1 minute; 2 and 4 timed on hardware (lights went off after 1 and 2 minutes). The app offers 60-1200 s (KB.ini `SleepUI` / `SleepHW`, the latter being seconds / 30) and writes 0 when sleep is turned off: verified, with 0 the lights stayed on overnight |
 | 19-21 | side light color / brightness / speed according to the app; no visible effect on the F75 (its side LEDs are white only: color values 0-7 all showed white) |
 | 56-57 | ? (`81 f0`) |
 | 58 + 2·(hw−1) | settings for effect hw: `[brightness 0-9, (speed 0-4 << 4) \| color]` |

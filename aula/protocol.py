@@ -136,7 +136,8 @@ KNOB_MODES = ["media", "lighting"]
 OS_MODES = ["windows", "android", "mac"]  # verified on hardware (Fn+W, Fn+Q, Fn+E)
 
 # Sleep timer: the official app (KB.ini SleepUI / SleepHW) offers these and stores
-# seconds / 30. Factory value 2 = 1 minute, verified with a stopwatch.
+# seconds / 30. Factory value 2 = 1 minute, verified with a stopwatch; 0 = never
+# (the lights stayed on overnight).
 SLEEP_UNIT = 30
 SLEEP_CHOICES = [60, 90, 120, 180, 240, 300, 600, 900, 1200]
 SLEEP_MAX = 1200
