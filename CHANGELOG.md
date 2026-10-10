@@ -6,6 +6,8 @@
   until another key is pressed (`aula macro …` and a Macros page in the GUI)
 - Deleting a macro gives its key the factory function back and renumbers the
   keys of later macros
+- GUI: an unexpected error no longer stops the background worker silently;
+  it is shown in the status bar and every later action keeps working
 
 ## 0.2.0 – 2026-10-10
 

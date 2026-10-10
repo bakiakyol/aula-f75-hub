@@ -249,7 +249,8 @@ class Keyboard:
                     raise AulaError(f"keyboard rejected read 0x{rcmd:02x}")
                 last = time.monotonic()
                 total = rep.total
-                parts[rep.index] = rep.data
+                if rep.index < total:
+                    parts[rep.index] = rep.data
                 if len(parts) == total:
                     return b"".join(parts[i] for i in range(total))
         if total is None:

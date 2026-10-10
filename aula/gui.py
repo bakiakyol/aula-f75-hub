@@ -7,6 +7,7 @@ import math
 import os
 import queue
 import threading
+import traceback
 
 import cairo
 import gi
@@ -139,14 +140,18 @@ class Worker:
                 if self.kb is None:
                     self.kb = Keyboard()
                 result = fn(self.kb)
-            except (AulaError, OSError, ValueError) as e:
+            except Exception as e:  # noqa: BLE001 - an escaping error would kill this thread
+                msg = str(e)
+                if not isinstance(e, (AulaError, OSError, ValueError)):
+                    traceback.print_exc()
+                    msg = f"{type(e).__name__}: {e}"
                 if self.kb is not None:
                     try:
                         self.kb.close()
                     except OSError:
                         pass
                 self.kb = None
-                GLib.idle_add(_once, self.on_error, str(e))
+                GLib.idle_add(_once, self.on_error, msg)
                 continue
             if done:
                 GLib.idle_add(_once, done, result)
