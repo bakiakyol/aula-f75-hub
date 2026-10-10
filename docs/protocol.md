@@ -47,10 +47,16 @@ packet is acknowledged before the next one is sent.
 On **macOS** the losses don't move, so this never completes. Measured on macOS
 27.0.1 (Apple silicon) with a 10-packet reply (0x44): the first two packets arrive,
 then about one in four, roughly 15 ms apart (the Bluetooth connection interval).
-Over 30 attempts with the random delay, packets 0, 1, 5 and 9 arrived nearly every
-time and 3, 4 and 7 never did. Sending a second read request shortly after the first
-gets no reply at all. Single-packet replies (e.g. 0x4A) arrive fine. So on macOS
-multi-packet reads over Bluetooth give up quickly and point to the 2.4G dongle.
+Packets 0, 1, 5 and 9 arrive nearly every time; over hundreds of attempts 4 and 7
+came a few times (about 1 %) and 3 never did, so retrying can't complete the reply.
+None of these moved the losses: the random delay, a fixed delay of 0-10 ms after a
+single-packet reply, a second request 0-80 ms after the first (both get answered,
+with the same losses), and other values in the request's total, length, sub and
+payload fields (the keyboard ignores them all for 0x44, and the reply data stays
+the same). The Bluetooth report descriptor has no Feature reports, and polling
+get_input_report only returns the latest packet. Single-packet replies (e.g. 0x4A)
+arrive, with an occasional loss. So on macOS multi-packet reads over Bluetooth give
+up quickly and point to the 2.4G dongle.
 
 The official app doesn't support Bluetooth at all: its device files
 (`Dev/kb/{1,wired,F75KR}/KB.ini`) list only 258A:010C and 3554:FA09, not FA07. Its
