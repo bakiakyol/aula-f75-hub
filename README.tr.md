@@ -50,6 +50,18 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
 </tr>
 </table>
 
+## Platformlar
+
+| Platform | Durum | Rehber |
+|---|---|---|
+| **Linux** | ✅ **Kararlı.** Bütün özellikler gerçek klavyede, 2.4G dongle ve Bluetooth üzerinden doğrulandı | [Kurulum](#kurulum) |
+| **macOS** | 🧪 **Test ediliyor**, [`port-macos`](https://github.com/bakiakyol/aula-f75-hub/tree/port-macos) dalında. **2.4G dongle:** macOS 27'de (Apple silicon) 21 kontrolün 19'u geçti, arayüz dahil. **Bluetooth:** ayarlar okunamıyor, çünkü macOS klavyenin her cevabının bir kısmını kaybediyor; ayarlar için dongle kullan (Bluetooth'la yazmak normal çalışır). **Bilinen sorun:** klavye Mac modundayken (Fn+E) Fn katmanındaki makrolar çalışmıyor; inceleniyor | [docs/macos.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-macos/docs/macos.md) |
+| **Windows** | 🧪 **Teste hazır**, [`port-windows`](https://github.com/bakiakyol/aula-f75-hub/tree/port-windows) dalında. Windows'ta otomatik testleri geçiyor, henüz gerçek klavyede denenmedi | [docs/windows.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-windows/docs/windows.md) |
+
+macOS ve Windows, gerçek donanımda doğrulanınca ana dala ve bir sürüme girecek. O
+zamana kadar kendi dalındaki rehberi izle. Birini denedin mi?
+[Nasıl gittiğini bildir](../../issues/new/choose).
+
 ## Desteklenen donanım
 
 Bağlantı türü klavyenin arkasındaki anahtarla seçiliyor (2.4G / kablo / Bluetooth).
@@ -63,6 +75,8 @@ Araç hangisi aktifse onu kendisi buluyor.
 | Diğer AULA modelleri | – | ❓ Bilinmiyor. Lütfen [bildir](../../issues/new/choose) |
 
 ## Kurulum
+
+Linux için. macOS ve Windows için [Platformlar](#platformlar) bölümüne bak.
 
 ```bash
 git clone https://github.com/bakiakyol/aula-f75-hub.git
@@ -296,6 +310,8 @@ blokta tutuluyor: 128 baytlık ışık bloğu, katman başına 504 baytlık tuş
 
 - [ ] Kablolu mod (aynı veri, farklı iletim katmanı)
 - [x] Bluetooth
+- [ ] macOS (test ediliyor)
+- [ ] Windows (teste hazır)
 - [x] Makrolar
 - [x] GUI'de klavyeden makro kaydetme
 - [x] Daha fazla tema

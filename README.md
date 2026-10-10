@@ -50,6 +50,18 @@ keyboard.
 </tr>
 </table>
 
+## Platforms
+
+| Platform | Status | Guide |
+|---|---|---|
+| **Linux** | ✅ **Stable.** Every feature verified on a real keyboard, over the 2.4G dongle and Bluetooth | [Installation](#installation) |
+| **macOS** | 🧪 **Being tested**, on the [`port-macos`](https://github.com/bakiakyol/aula-f75-hub/tree/port-macos) branch. **2.4G dongle:** 19 of 21 checks passed on macOS 27 (Apple silicon), GUI included. **Bluetooth:** settings can't be read, because macOS loses part of every reply from the keyboard; use the dongle for settings (typing over Bluetooth works as usual). **Known issue:** macros on the Fn layer don't run while the keyboard is in Mac mode (Fn+E); being looked into | [docs/macos.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-macos/docs/macos.md) |
+| **Windows** | 🧪 **Ready for testing**, on the [`port-windows`](https://github.com/bakiakyol/aula-f75-hub/tree/port-windows) branch. Passes the automated tests on Windows, not tried on a real keyboard yet | [docs/windows.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-windows/docs/windows.md) |
+
+macOS and Windows come to the main branch and a release once they've been checked
+on real hardware. Until then, follow the guide on their branch. Tried one of them?
+Please [tell us how it went](../../issues/new/choose).
+
 ## Supported hardware
 
 The connection type is chosen with the switch on the back of the keyboard
@@ -63,6 +75,8 @@ The connection type is chosen with the switch on the back of the keyboard
 | Other AULA models | – | ❓ Unknown. Please [report](../../issues/new/choose) |
 
 ## Installation
+
+On Linux. For macOS and Windows, see [Platforms](#platforms).
 
 ```bash
 git clone https://github.com/bakiakyol/aula-f75-hub.git
@@ -292,6 +306,8 @@ handful of blocks: a 128-byte lighting block, a 504-byte keymap per layer, and a
 
 - [ ] Wired mode (same data, different transport)
 - [x] Bluetooth
+- [ ] macOS (being tested)
+- [ ] Windows (ready for testing)
 - [x] Macros
 - [x] Recording macros from the keyboard in the GUI
 - [x] More themes
