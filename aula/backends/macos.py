@@ -49,9 +49,25 @@ def find_devices() -> list[dict]:
 
 
 # ------------------------------------------------------------ channel
+def open_shared(hid) -> None:
+    """Make hidapi open devices shared instead of seized.
+
+    On macOS hidapi seizes every device it opens (kIOHIDOptionsTypeSeizeDevice),
+    and macOS refuses to let a normal program seize a keyboard, so every open
+    failed. The setter is in hidapi 0.12+; the key reports that a shared open
+    also delivers are dropped by protocol.parse_packet (wrong report id).
+    """
+    try:
+        ctypes.CDLL(hid.__file__).hid_darwin_set_open_exclusive(0)
+    except (OSError, AttributeError):
+        pass
+
+
 class MacChannel(Channel):
     def __init__(self, path: str):
-        self.dev = _hid().device()
+        hid = _hid()
+        open_shared(hid)
+        self.dev = hid.device()
         try:
             self.dev.open_path(path.encode())
         except OSError:

@@ -1,5 +1,6 @@
 """macOS backend: pure logic everywhere, real hidapi / Quartz calls on macOS (no keyboard needed)."""
 
+import ctypes
 import os
 import subprocess
 import sys
@@ -90,6 +91,14 @@ class MacTests(unittest.TestCase):
         except ImportError:
             self.skipTest("hidapi not installed")
         self.assertIsInstance(MAC.find_devices(), list)   # no keyboard on CI: empty, no crash
+
+    def test_open_shared(self):
+        try:
+            import hid
+        except ImportError:
+            self.skipTest("hidapi not installed")
+        MAC.open_shared(hid)
+        self.assertEqual(ctypes.CDLL(hid.__file__).hid_darwin_get_open_exclusive(), 0)
 
     def test_key_guard(self):
         MAC.MacKeyGuard().wait_released(quiet=0.05, limit=2.0)
