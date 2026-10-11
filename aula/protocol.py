@@ -28,7 +28,12 @@ CMD_SET_LED = 0x04      # effect / brightness / speed / color
 CMD_RESET = 0x06        # factory reset (no reply)
 CMD_SET_PALETTE = 0x09  # per-effect 7-color palettes
 CMD_PROFILE = 0x0A
+CMD_LIVE = 0x88         # real-time frame: not acknowledged, not stored (see live_frame)
 READ = 0x40
+
+LIVE_KEYS = 1           # sub of CMD_LIVE: per-key colors as color groups
+LIVE_MAX = 200          # longest frame the official app sends
+LIVE_GAP = 0.005        # s between packets: closer together the keyboard drops frames (tested)
 
 LED_LEN = 128
 LED_MAGIC = b"\x5a\xa5"
@@ -249,6 +254,65 @@ def custom_from_colors(colors: dict[int, tuple[int, int, int]]) -> bytes:
     for i, (r, g, bl) in colors.items():
         b[i], b[MATRIX_LEN + i], b[2 * MATRIX_LEN + i] = r, g, bl
     return bytes(b)
+
+
+def median_cut(groups: dict[tuple[int, int, int], list[int]], n: int) -> dict[tuple[int, int, int], list[int]]:
+    """Merge {color: keys} into at most n groups, each shown in the average color.
+
+    The group with the widest spread in one channel is split at its median, until
+    there are n. Similar colors end up together, so nothing changes hue.
+    """
+    if len(groups) <= n:
+        return dict(groups)
+    boxes = [list(groups.items())]
+
+    def spread(box):
+        return max((max(c[ch] for c, _ in box) - min(c[ch] for c, _ in box), ch) for ch in range(3))
+
+    while len(boxes) < n:
+        box = max(boxes, key=lambda b: spread(b)[0])
+        width, ch = spread(box)
+        if width == 0:
+            break
+        box.sort(key=lambda item: item[0][ch])
+        half = len(box) // 2
+        boxes.remove(box)
+        boxes += [box[:half], box[half:]]
+    merged: dict[tuple[int, int, int], list[int]] = {}
+    for box in boxes:
+        keys = [i for _, ks in box for i in ks]
+        avg = tuple(round(sum(c[ch] * len(ks) for c, ks in box) / len(keys)) for ch in range(3))
+        merged.setdefault(avg, []).extend(keys)
+    return merged
+
+
+def live_frame(groups: dict[tuple[int, int, int], list[int]]) -> bytes:
+    """{color: [index…]} -> a real-time frame for CMD_LIVE / LIVE_KEYS.
+
+    The frame is a list of groups [R, G, B, count, index…]. Keys that aren't
+    listed go dark, so black groups are left out.
+    """
+    out = bytearray()
+    for (r, g, b), keys in groups.items():
+        if keys and (r or g or b):
+            out += bytes([r, g, b, len(keys), *sorted(keys)])
+    if not out:
+        return bytes([0, 0, 0, 1, 0])  # a single dark key: everything off
+    if len(out) > LIVE_MAX:
+        raise ValueError(f"real-time frame too long ({len(out)} bytes, at most {LIVE_MAX})")
+    return bytes(out)
+
+
+def colors_from_live(frame: bytes) -> dict[int, tuple[int, int, int]]:
+    """The key colors a real-time frame shows (unlisted keys are dark)."""
+    colors = {}
+    i = 0
+    while i + 4 <= len(frame):
+        n = frame[i + 3]
+        for idx in frame[i + 4:i + 4 + n]:
+            colors[idx] = tuple(frame[i:i + 3])
+        i += 4 + n
+    return colors
 
 
 def colors_from_custom(raw: bytes) -> dict[int, tuple[int, int, int]]:

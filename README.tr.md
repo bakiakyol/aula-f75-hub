@@ -25,7 +25,10 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
 - **15 ışık efekti**, renk, parlaklık ve hız ayarıyla: nefes, yağmur damlası, yılan,
   şelale, gökkuşağı çarkı, tuşa basınca yayılan dalgalar… Tek renkli efektlerde
   sadece 7 hazır renk değil, **istediğin her RGB rengi** kullanılabiliyor.
-- **Tuş başı RGB**: Çizimde tuşlara tıklayıp boya. 9 hazır tema da var.
+- **Tuş başı RGB**: Çizimde tuşlara tıklayıp boya. 23 hazır tema da var, hepsi kendi galerisinde önizlemeli.
+- **Bilgisayardan oynatılan animasyonlar**: Klavyede akan, nefes alan ya da yıldız
+  gibi parlayan temalar, gökkuşağı, kıvılcımlı ateş. Klavyenin anlık ışık kanalından
+  tuş tuş kare gönderiliyor, klavyeye hiçbir şey kaydedilmiyor.
 - **Tuş atama**: Normal ve Fn katmanında. Her değişiklik klavyeden geri okunup doğrulanıyor.
 - **Makrolar**: Tuş kombinasyonları, yazı ve beklemeler. Bir kez, N kez, basılı
   tutulduğu sürece ya da başka bir tuşa basılana kadar çalıştırılabiliyor. Adımlar
@@ -138,7 +141,7 @@ Renk adları: `red` (kırmızı), `green` (yeşil), `blue` (mavi), `yellow` (sar
 
 ### Temalar
 
-`aula preset AD` bütün tuşları tek seferde boyar (arayüzde Lighting sayfasından da
+`aula preset AD` bütün tuşları tek seferde boyar (arayüzde Themes sayfasından da
 seçilebilir). Sadece `aula preset` yazarsan temaları listeler.
 
 | Tema | Renkler |
@@ -152,6 +155,46 @@ seçilebilir). Sadece `aula preset` yazarsan temaları listeler.
 | `aurora` | lacivert → kutup ışığı yeşili → mor, canlı pembe WASD |
 | `miami-vice` | parlak camgöbeği → canlı pembe → mor, sarı WASD |
 | `toxic` | koyu gri → asit yeşili → koyu gri, mor WASD |
+| `rainbow` | soldan sağa bütün gökkuşağı |
+| `ocean` | üstte beyaz köpük → turkuaz → altta koyu mavi, mercan rengi WASD/ok tuşları |
+| `fire` | üstte sarı → turuncu → altta kırmızı, yükselen alevler gibi, beyaz Esc |
+| `forest` | üstte altın yapraklar → yaprak yeşili → koyu yosun, kehribar WASD/ok tuşları |
+| `sakura` | çapraz: kiraz pembesi → çiçek beyazı → pembe, yeşil Esc |
+| `frost` | sol üstte buz beyazı → buzul mavisi → koyu mavi, beyaz Esc/Enter |
+| `vaporwave` | çapraz: canlı pembe → menekşe → turkuaz, sarı WASD |
+| `galaxy` | ortada pembe çekirdek → mor → kenarlarda uzay mavisi, beyaz yıldızlar |
+| `supernova` | ortası beyaz sıcak → sarı → turuncu → kenarlar kırmızı |
+| `nord` | buz mavisi → deniz yeşili → kutup moru, kar beyazı WASD/ok tuşları, kırmızı Esc |
+| `tokyo-night` | gece mavisi → mor → neon kırmızı, camgöbeği WASD/ok tuşları, turuncu Esc |
+| `catppuccin` | leylak → pembe → gök mavisi → yeşil pasteller, şeftali WASD/ok tuşları |
+| `gruvbox` | sıcak kırmızı → sarı → yeşil → mavi, turuncu Esc |
+| `royal` | koyu mor; WASD, ok tuşları, Esc, Enter ve Space altın sarısı |
+
+### Animasyonlar
+
+15 hazır efektin aksine bunları bilgisayar oynatıyor, saniyede yaklaşık 14 kare.
+Bu yüzden her şeyi gösterebiliyorlar: mesela bir temanın klavye üzerinde akmasını.
+Arayüzde **Animations** sayfasından birini seçip Play'e bas ya da:
+
+```bash
+aula animate                         # listeler
+aula animate wave --theme ocean      # Ctrl+C ile durur
+aula animate fire --speed 1.5 --seconds 60
+```
+
+| Animasyon | Ne yapıyor |
+|---|---|
+| `wave` | tema klavye üzerinde akıyor, üstünde parlak bir dalga tepesi |
+| `breathe` | tema sönüp yanıyor, nefes alır gibi |
+| `sparkle` | tema loş yanarken tuşlar beyaz yıldız gibi parlıyor |
+| `rainbow` | soldan sağa akan gökkuşağı |
+| `fire` | yükselip alçalan koyu kırmızı alevler, yukarı uçan kıvılcımlar |
+| `blaze` | kıvılcım dolu parlak sarı ateş |
+
+Sadece arayüz (ya da `aula animate`) açıkken çalışırlar. Durduktan yaklaşık 2 saniye
+sonra klavye kendi efektine döner. Klavyeye hiçbir şey kaydedilmediği için hafızasını
+yıpratmazlar, bu sırada yazı yazmak da normal çalışır. 2.4G alıcıyla denendi,
+Bluetooth henüz denenmedi.
 
 ### Makrolar
 

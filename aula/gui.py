@@ -3,10 +3,13 @@
 Start with:  ./aula.sh gui   (or python3 -m aula gui)
 """
 
+import colorsys
 import math
 import os
 import queue
+import string
 import threading
+import time
 import traceback
 
 import cairo
@@ -20,6 +23,7 @@ from gi.repository import Gdk, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 from . import animation as A  # noqa: E402
 from . import backends  # noqa: E402
 from . import keymap as K  # noqa: E402
+from . import live as L  # noqa: E402
 from . import macros as M  # noqa: E402
 from . import presets as T  # noqa: E402
 from . import protocol as P  # noqa: E402
@@ -36,18 +40,120 @@ CAP = (58, 61, 69)                 # #3A3D45 unlit keycap
 UNLIT = (44, 47, 54)               # how an unlit key is drawn on the board
 
 
-CSS = b"""
-.desk { background-color: #101116; }
-.desk label { color: #8b92a0; }
-.readout { font-family: "Ubuntu Sans Mono", Consolas, Menlo, monospace; font-size: 9pt; letter-spacing: 1px; }
-.readout.value { color: #d7dae0; }
-.desk button {
-    background-image: none; background-color: #1b1d22; color: #d7dae0;
-    border: 1px solid #2b2e36; box-shadow: none; text-shadow: none; -gtk-icon-shadow: none;
+# One look for the whole window: a desk at night, where the only color is the light
+# the keyboard gives off. $light is that light, taken from what the board shows
+# (see light_color), so the controls take on the colors of the current lighting.
+CSS = string.Template("""
+@define-color night #101116;
+@define-color graphite #16181d;
+@define-color plate #1f2228;
+@define-color plate_hi #282b33;
+@define-color edge #2c2f37;
+@define-color legend #8b92a0;
+@define-color paper #e6e8ec;
+@define-color light $light;
+
+.aula { font-size: $font; background-color: @graphite; color: @paper; }
+headerbar.aula-header {
+    background-image: none; background-color: @night; color: @paper;
+    border-bottom: 1px solid @edge; box-shadow: none;
 }
-.desk button:hover { background-color: #252830; }
+headerbar.aula-header .subtitle { color: @legend; }
+headerbar.aula-header button { background: none; border: none; box-shadow: none; color: @legend; }
+headerbar.aula-header button:hover { color: @paper; }
+
+.aula paned > separator { background-image: none; background-color: @edge; min-height: 1px; }
+.aula stacksidebar, .aula stacksidebar list { background-color: @night; border: none; }
+.aula stacksidebar { border-right: 1px solid @edge; }
+.aula stacksidebar row { padding: 8px 14px; color: @legend; background: none; }
+.aula stacksidebar row:hover { color: @paper; background-color: @plate; }
+.aula stacksidebar row:selected { color: @paper; background-color: @plate; box-shadow: inset 3px 0 @light; }
+.aula stack, .aula viewport { background-color: @graphite; }
+.aula .dim-label { color: @legend; opacity: 1; }
+
+.aula button {
+    background-image: none; background-color: @plate; color: @paper;
+    border: 1px solid @edge; border-radius: 7px; box-shadow: none; text-shadow: none; -gtk-icon-shadow: none;
+    outline-color: alpha(@light, 0.8);
+}
+.aula button:hover { background-color: @plate_hi; border-color: #3a3e48; }
+.aula button:active, .aula button:checked { background-color: @night; }
+.aula button:disabled { background-color: @graphite; color: alpha(@legend, 0.5); }
+.aula button.suggested-action { background-color: @light; border-color: @light; color: @night; font-weight: bold; }
+.aula button.suggested-action:hover { background-color: shade(@light, 1.1); }
+.aula button.destructive-action { background-color: #35191c; border-color: #5a2a2e; color: #ff9d9d; }
+.aula entry, .aula spinbutton, .aula textview text {
+    background-image: none; background-color: @night; color: @paper; box-shadow: none;
+}
+.aula entry, .aula spinbutton { border: 1px solid @edge; border-radius: 7px; }
+.aula entry:focus, .aula spinbutton:focus { border-color: @light; }
+.aula scale trough { background-image: none; background-color: @plate; border: none; min-height: 4px; }
+.aula scale highlight { background-image: none; background-color: @light; border: none; }
+.aula scale slider {
+    background-image: none; background-color: @paper; border: none;
+    box-shadow: 0 0 0 4px alpha(@light, 0.25); min-width: 14px; min-height: 14px;
+}
+.aula scale marks, .aula scale value { color: @legend; }
+.aula switch { background-image: none; background-color: @plate; border-color: @edge; }
+.aula switch:checked { background-color: @light; }
+.aula switch slider { background-image: none; background-color: @paper; border-color: @edge; }
+
+.eyebrow {
+    font-family: "Ubuntu Sans Mono", "JetBrains Mono", monospace; font-size: 0.85em;
+    letter-spacing: 2px; color: @legend; margin-top: 6px;
+}
+/* the signature: a chosen card glows from underneath, like a lit keycap */
+.aula button.theme-card {
+    background-color: @night; color: @legend; border: 1px solid @edge; border-radius: 10px;
+    padding: 6px 6px 4px 6px;
+}
+.aula button.theme-card:hover { border-color: #4a4f5c; color: @paper; }
+.aula button.theme-card.selected {
+    border-color: @light; color: @paper;
+    box-shadow: inset 0 -2px alpha(@light, 0.9), 0 6px 16px -6px alpha(@light, 0.7);
+}
+.aula button.play-big { font-size: 1.15em; padding: 8px 22px; }
+.aula button.play-big:checked {
+    background-color: @light; color: @night;
+    box-shadow: 0 0 22px -4px alpha(@light, 0.9);
+    animation: lit 2.4s ease-in-out infinite;
+}
+@keyframes lit { 50% { box-shadow: 0 0 8px -4px alpha(@light, 0.4); } }
+
+.desk { background-color: @night; }
+.desk label { color: @legend; }
+.readout { font-family: "Ubuntu Sans Mono", "JetBrains Mono", monospace; font-size: 0.9em; letter-spacing: 1px; }
+.readout.value { color: @paper; }
+.desk button { background-color: @plate; }
 .desk button.swatch { padding: 3px; border-radius: 7px; }
-"""
+""")
+UNLIT_LIGHT = "#f2e6c9"   # warm white, for a board that is off
+
+
+def light_color(colors) -> str:
+    """The light the board gives off: the hue most keys glow in, made bright enough to read.
+
+    Hues are counted in 12 bins, each key weighted by how vivid it is, so a few
+    accent keys don't outshine the rest of the board.
+    """
+    bins: dict[int, list[tuple[float, tuple[float, float, float]]]] = {}
+    for c in colors:
+        h, s, v = colorsys.rgb_to_hsv(*(ch / 255 for ch in c))
+        vivid = s * v
+        if vivid > 0.15:
+            bins.setdefault(round(h * 12) % 12, []).append((vivid, (h, s, v)))
+    if not bins:
+        return UNLIT_LIGHT
+    best = max(bins.values(), key=lambda b: sum(w for w, _ in b))
+    h, s, v = max(best)[1]
+    r, g, b = colorsys.hsv_to_rgb(h, min(s, 0.8), max(v, 0.92))
+    return f"#{round(r * 255):02x}{round(g * 255):02x}{round(b * 255):02x}"
+
+
+# The window is laid out for this size; larger or smaller windows scale the text
+# and controls by the same factor, so the whole interface keeps its proportions.
+BASE_SIZE = (1100, 780)
+SCALE_RANGE = (0.85, 1.6)
 
 
 UI_FONT = "Ubuntu Sans,Segoe UI,Helvetica Neue,sans"  # first one installed wins
@@ -122,8 +228,11 @@ class Worker:
     """Runs keyboard operations on a background thread, one at a time.
 
     Jobs submitted with the same `key` are coalesced: only the newest one runs,
-    so dragging a slider sends just the final value.
+    so dragging a slider sends just the final value. Between jobs it streams the
+    real-time frame in `live` (an animation), if there is one.
     """
+
+    RESEND = 0.5  # repeat an unchanged frame this often, or the keyboard drops it after ~2 s
 
     def __init__(self, on_error):
         self.q: queue.Queue = queue.Queue()
@@ -131,6 +240,7 @@ class Worker:
         self.seq = 0
         self.kb: Keyboard | None = None
         self.on_error = on_error
+        self.live: bytes | None = None
         threading.Thread(target=self._run, daemon=True).start()
 
     def submit(self, fn, done=None, key=None):
@@ -139,36 +249,59 @@ class Worker:
             self.latest[key] = self.seq
         self.q.put((self.seq, key, fn, done))
 
+    def set_live(self, frame: bytes | None):
+        """Keep showing this real-time frame (None: stop streaming)."""
+        idle = self.live is None
+        self.live = frame
+        if idle and frame is not None:
+            self.q.put(None)                             # wake the thread up
+
     def _run(self):
+        sent, sent_at = None, 0.0
         while True:
-            seq, key, fn, done = self.q.get()
+            try:
+                item = self.q.get(timeout=0.01 if self.live is not None else None)
+            except queue.Empty:
+                frame = self.live
+                if frame is not None and (frame is not sent or time.monotonic() - sent_at > self.RESEND):
+                    sent, sent_at = frame, time.monotonic()
+                    self._call(lambda kb: kb.send_live(frame), None)
+                continue
+            if item is None:
+                continue
+            seq, key, fn, done = item
             if key and self.latest.get(key) != seq:
                 continue
-            try:
-                if self.kb is None:
-                    self.kb = Keyboard()
-                result = fn(self.kb)
-            except Exception as e:  # noqa: BLE001 - an escaping error would kill this thread
-                msg = str(e)
-                if not isinstance(e, (AulaError, OSError, ValueError)):
-                    traceback.print_exc()
-                    msg = f"{type(e).__name__}: {e}"
-                if self.kb is not None:
-                    try:
-                        self.kb.close()
-                    except OSError:
-                        pass
-                self.kb = None
-                GLib.idle_add(_once, self.on_error, msg)
-                continue
-            if done:
-                GLib.idle_add(_once, done, result)
+            self._call(fn, done)
+
+    def _call(self, fn, done):
+        try:
+            if self.kb is None:
+                self.kb = Keyboard()
+            result = fn(self.kb)
+        except Exception as e:  # noqa: BLE001 - an escaping error would kill this thread
+            msg = str(e)
+            if not isinstance(e, (AulaError, OSError, ValueError)):
+                traceback.print_exc()
+                msg = f"{type(e).__name__}: {e}"
+            if self.kb is not None:
+                try:
+                    self.kb.close()
+                except OSError:
+                    pass
+            self.kb = None
+            self.live = None
+            GLib.idle_add(_once, self.on_error, msg)
+            return
+        if done:
+            GLib.idle_add(_once, done, result)
 
 
 class KeyboardView(Gtk.DrawingArea):
     """Drawing of the board; click to select keys (Ctrl/Shift-click adds)."""
 
     MARGIN = 22
+    ASPECT = (263 - 30) / (630 - 30)  # height / width of the drawing (see _geometry)
 
     def __init__(self, on_select):
         super().__init__()
@@ -176,7 +309,7 @@ class KeyboardView(Gtk.DrawingArea):
         self.preview: dict[int, tuple] | None = None  # shown instead while another effect runs
         self.selected: set[int] = set()
         self.on_select = on_select
-        self.set_size_request(640, 260)
+        self.set_size_request(420, 170)
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         self.connect("draw", self._draw)
         self.connect("button-press-event", self._click)
@@ -310,6 +443,23 @@ class KeyboardView(Gtk.DrawingArea):
             cr.set_line_width(max(1.5, 2 * s))
             cr.stroke()
 
+    @classmethod
+    def draw_thumbnail(cls, cr, w, h, colors):
+        """Small flat drawing of the board in the given key colors (theme previews)."""
+        x0, y0, x1, y1 = 26, 26, 634, 267
+        s = min(w / (x1 - x0), h / (y1 - y0))
+        ox, oy = (w - (x1 - x0) * s) / 2 - x0 * s, (h - (y1 - y0) * s) / 2 - y0 * s
+        cls._rounded(cr, ox + x0 * s, oy + y0 * s, (x1 - x0) * s, (y1 - y0) * s, 8 * s)
+        cr.set_source_rgb(0.045, 0.048, 0.058)
+        cr.fill()
+        for idx, _name, _label, rect in K.KEYS:
+            if idx == K.BY_NAME["knob"]:
+                continue
+            kx1, ky1, kx2, ky2 = rect
+            cls._rounded(cr, ox + kx1 * s, oy + ky1 * s, (kx2 - kx1) * s, (ky2 - ky1) * s, 3 * s)
+            cr.set_source_rgb(*(c / 255 for c in colors.get(idx, UNLIT)))
+            cr.fill()
+
     def _click(self, _w, event):
         s, ox, oy = self._geometry()
         px, py = (event.x - ox) / s, (event.y - oy) / s
@@ -334,7 +484,12 @@ class KeyboardView(Gtk.DrawingArea):
 class AulaWindow(Gtk.Window):
     def __init__(self):
         super().__init__(title="AULA F75")
-        self.set_default_size(980, 680)
+        self.set_default_size(*self._initial_size())
+        self.ui_scale = 1.0
+        self.live_anim: L.Animation | None = None  # animation streaming from this computer
+        self.connection = "connecting"              # connecting, ready or lost
+        self.live_time = 0.0                        # its clock (runs faster with more speed)
+        self.live_tick = 0.0
         self.led: P.LedConfig | None = None
         self.palette: bytes | None = None  # effect palettes (0x49)
         self.updating = False  # True while widgets are filled from device state
@@ -351,35 +506,54 @@ class AulaWindow(Gtk.Window):
         refresh.set_tooltip_text("Reload from keyboard")
         refresh.connect("clicked", lambda _b: self.load())
         header.pack_start(refresh)
+        header.get_style_context().add_class("aula-header")
         self.header = header
         self.set_titlebar(header)
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        root.get_style_context().add_class("aula")
         self.add(root)
 
-        provider = Gtk.CssProvider()
-        provider.load_from_data(CSS)
-        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider,
+        self.css = Gtk.CssProvider()
+        self.light = UNLIT_LIGHT
+        self._load_css()
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), self.css,
                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.scaled: list[tuple[Gtk.Widget, int, int]] = []  # (widget, base width, base height)
         desk = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         desk.get_style_context().add_class("desk")
         self.view = KeyboardView(self.on_selection)
         desk.pack_start(self.view, True, True, 0)
-        desk.pack_start(self._desk_tools(), False, False, 0)
-        root.pack_start(desk, True, True, 0)
+        self.desk_tools = self._desk_tools()
+        desk.pack_start(self.desk_tools, False, False, 0)
 
         stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
-        stack.add_titled(self._page_lighting(), "lighting", "Lighting")
-        stack.add_titled(self._page_remap(), "remap", "Key remap")
-        stack.add_titled(self._page_macros(), "macros", "Macros")
-        stack.add_titled(self._page_device(), "device", "Device")
-        stack.add_titled(self._page_backup(), "backup", "Backup")
+        self.stack = stack
+        for page, name, title in ((self._page_lighting(), "lighting", "Lighting"),
+                                  (self._page_themes(), "themes", "Themes"),
+                                  (self._page_animations(), "animations", "Animations"),
+                                  (self._page_remap(), "remap", "Key remap"),
+                                  (self._page_macros(), "macros", "Macros"),
+                                  (self._page_device(), "device", "Device"),
+                                  (self._page_backup(), "backup", "Backup")):
+            scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+            scroll.add(page)
+            stack.add_titled(scroll, name, title)
         sidebar = Gtk.StackSidebar(stack=stack)
-        sidebar.set_size_request(160, -1)
+        self._scale_size(sidebar, 160, -1)
         bottom = Gtk.Box()
         bottom.pack_start(sidebar, False, False, 0)
         bottom.pack_start(stack, True, True, 0)
-        root.pack_start(bottom, False, False, 0)
+
+        # board on top, settings below; the divider can be dragged, and is put back
+        # where the board fits whenever the window changes size
+        self.paned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
+        self.paned.pack1(desk, True, False)
+        self.paned.pack2(bottom, True, False)
+        root.pack_start(self.paned, True, True, 0)
+        self.paned_size = None
+        self.paned.connect("size-allocate", self._place_divider)
+        self.connect("size-allocate", self._on_resize)
 
         self.status = Gtk.Label(xalign=0, margin=6)
         self.status.get_style_context().add_class("dim-label")
@@ -390,10 +564,73 @@ class AulaWindow(Gtk.Window):
         self.connect("destroy", Gtk.main_quit)
         self.load()
 
+    # ------------------------------------------------------------ scaling
+    @staticmethod
+    def _initial_size():
+        """BASE_SIZE, or less on a small screen."""
+        w, h = BASE_SIZE
+        display = Gdk.Display.get_default()
+        monitor = (display.get_primary_monitor() or display.get_monitor(0)) if display else None
+        if monitor is not None:
+            area = monitor.get_workarea()
+            w, h = min(w, int(area.width * 0.92)), min(h, int(area.height * 0.92))
+        return w, h
+
+    def _scale_size(self, widget, w, h):
+        """Size request that follows the interface scale (-1: natural size)."""
+        self.scaled.append((widget, w, h))
+        widget.set_size_request(w, h)
+
+    def _place_divider(self, paned, alloc):
+        if self.paned_size != (alloc.width, alloc.height):
+            self.paned_size = (alloc.width, alloc.height)
+            GLib.idle_add(self._fit_board, alloc.width, alloc.height)
+
+    def _fit_board(self, w, h):
+        """Give the board the height it needs at this width, but at most 60 %."""
+        m = KeyboardView.MARGIN
+        board = (w - 2 * m) * KeyboardView.ASPECT + 2 * m
+        tools = self.desk_tools.get_preferred_height()[1]
+        self.paned.set_position(round(min(board + tools, h * 0.6)))
+        return False
+
+    def _on_resize(self, _w, alloc):
+        lo, hi = SCALE_RANGE
+        f = min(alloc.width / BASE_SIZE[0], alloc.height / BASE_SIZE[1])
+        f = round(max(lo, min(hi, f)) * 20) / 20         # in steps of 5 %
+        if f != self.ui_scale:
+            self.ui_scale = f
+            GLib.idle_add(self._apply_scale)
+
+    def _load_css(self):
+        font = Pango.FontDescription.from_string(Gtk.Settings.get_default().props.gtk_font_name or "")
+        base = font.get_size() / Pango.SCALE if font.get_size() else 10
+        self.css.load_from_data(CSS.substitute(light=self.light, font=f"{base * self.ui_scale:.1f}pt").encode())
+
+    def refresh_light(self):
+        """Light the controls in the color the keyboard shows now."""
+        if self.live_anim is not None:
+            colors = P.colors_from_live(L.frame(self.live_anim, T.PRESET_BY_NAME[self.anim_theme], 1.0))
+        else:
+            colors = self.view.preview if self.view.preview is not None else self.view.colors
+        light = light_color(colors.values())
+        if light != self.light:
+            self.light = light
+            self._load_css()
+
+    def _apply_scale(self):
+        f = self.ui_scale
+        self._load_css()
+        for widget, w, h in self.scaled:
+            widget.set_size_request(round(w * f) if w > 0 else w, round(h * f) if h > 0 else h)
+        self.paned_size = None                           # the tools under the board changed height
+        return False
+
     # ------------------------------------------------------------ widgets
     @staticmethod
     def _grid():
-        g = Gtk.Grid(column_spacing=12, row_spacing=10, margin=16)
+        # natural width, not stretched across a wide window
+        g = Gtk.Grid(column_spacing=12, row_spacing=10, margin=16, halign=Gtk.Align.START)
         return g
 
     @staticmethod
@@ -413,14 +650,19 @@ class AulaWindow(Gtk.Window):
         strip.pack_end(self.readout_right, False, False, 0)
         outer.pack_start(strip, False, False, 0)
 
+        tools = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=2,
+                            column_spacing=6, row_spacing=6)
+        outer.pack_start(tools, False, False, 0)
         box = Gtk.Box(spacing=6)
-        outer.pack_start(box, False, False, 0)
+        actions = Gtk.Box(spacing=6, halign=Gtk.Align.END)
+        tools.add(box)
+        tools.add(actions)
         for name, rgb in SWATCHES:
             btn = Gtk.Button()
             btn.get_style_context().add_class("swatch")
             btn.set_tooltip_text(f"Paint selected keys {name.lower()}")
             area = Gtk.DrawingArea()
-            area.set_size_request(24, 18)
+            self._scale_size(area, 24, 18)
             area.connect("draw", self._draw_swatch, rgb)
             btn.add(area)
             btn.connect("clicked", lambda _b, c=rgb: self.paint_selection(c))
@@ -429,12 +671,12 @@ class AulaWindow(Gtk.Window):
         picker.set_tooltip_text("Paint selected keys with any color")
         picker.connect("clicked", self.on_color_picked)
         box.pack_start(picker, False, False, 0)
-        clear = Gtk.Button(label="Clear selection")
-        clear.connect("clicked", self.on_clear_selection)
-        box.pack_end(clear, False, False, 0)
         sel_all = Gtk.Button(label="Select all")
         sel_all.connect("clicked", self.on_select_all)
-        box.pack_end(sel_all, False, False, 0)
+        actions.pack_start(sel_all, False, False, 0)
+        clear = Gtk.Button(label="Clear selection")
+        clear.connect("clicked", self.on_clear_selection)
+        actions.pack_start(clear, False, False, 0)
         return outer
 
     @staticmethod
@@ -478,22 +720,128 @@ class AulaWindow(Gtk.Window):
         self.speed = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 4, 1)
         for sc in (self.bright, self.speed):
             sc.set_digits(0)
-            sc.set_hexpand(True)
+            self._scale_size(sc, 420, -1)
             sc.connect("value-changed", self.on_led_widget)
         rows = [("Effect", self.effect_combo), ("Color", color_row),
                 ("Brightness", self.bright), ("Speed", self.speed)]
         for r, (text, w) in enumerate(rows):
             g.attach(self._label(text), 0, r, 1, 1)
             g.attach(w, 1, r, 1, 1)
-        presets = Gtk.Box(spacing=6)
-        for p in T.PRESETS:
-            b = Gtk.Button(label=p.name)
-            b.set_tooltip_text(p.description)
-            b.connect("clicked", lambda _b, p=p: self.load_preset(p))
-            presets.pack_start(b, False, False, 0)
-        g.attach(self._label("Themes"), 0, len(rows), 1, 1)
-        g.attach(presets, 1, len(rows), 1, 1)
         return g
+
+    def _page_themes(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=16)
+        hint = Gtk.Label(xalign=0, wrap=True,
+                         label="Click a theme to paint every key with it (switches to the custom effect). "
+                               "You can paint single keys over it afterwards.")
+        hint.get_style_context().add_class("dim-label")
+        page.pack_start(hint, False, False, 0)
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                           column_spacing=10, row_spacing=10,
+                           max_children_per_line=12, valign=Gtk.Align.START)
+        page.pack_start(flow, False, False, 0)
+        for p in T.PRESETS:
+            card, _area = self._card((132, 54), self._draw_colors(T.render(p)), p.name,
+                                     lambda _b, p=p: self.load_preset(p))
+            card.set_tooltip_text(p.description)
+            flow.add(card)
+        return page
+
+    def _card(self, size, draw, title, on_click):
+        """A clickable card: a small drawing of the board over a title."""
+        card = Gtk.Button()
+        card.get_style_context().add_class("theme-card")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        area = Gtk.DrawingArea()
+        self._scale_size(area, *size)
+        area.connect("draw", draw)
+        box.pack_start(area, True, True, 0)
+        box.pack_start(Gtk.Label(label=title), False, False, 0)
+        card.add(box)
+        card.connect("clicked", on_click)
+        return card, area
+
+    @staticmethod
+    def _draw_colors(colors):
+        return lambda a, cr: KeyboardView.draw_thumbnail(cr, a.get_allocated_width(),
+                                                         a.get_allocated_height(), colors)
+
+    @staticmethod
+    def _eyebrow(title):
+        label = Gtk.Label(xalign=0, label=title.upper())
+        label.get_style_context().add_class("eyebrow")
+        return label
+
+    @staticmethod
+    def _flow(per_line):
+        return Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True, column_spacing=10,
+                           row_spacing=10, max_children_per_line=per_line, valign=Gtk.Align.START)
+
+    def _page_animations(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=16)
+        self.anim_name, self.anim_theme = L.ANIMATIONS[0].name, "ocean"
+
+        bar = Gtk.Box(spacing=16)                        # always in sight: play, what plays, speed
+        self.anim_play = Gtk.ToggleButton(label="▶   Play", valign=Gtk.Align.CENTER)
+        for cls in ("suggested-action", "play-big"):
+            self.anim_play.get_style_context().add_class(cls)
+        self.anim_play.connect("toggled", self.on_anim_play)
+        bar.pack_start(self.anim_play, False, False, 0)
+        self.anim_status = Gtk.Label(xalign=0, wrap=True)
+        bar.pack_start(self.anim_status, True, True, 0)
+        speed = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, valign=Gtk.Align.CENTER)
+        speed.pack_start(Gtk.Label(label="Speed", xalign=0), False, False, 0)
+        self.anim_speed = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.25, 3.0, 0.25)
+        self.anim_speed.set_value(1.0)
+        self.anim_speed.set_draw_value(False)
+        for value, text in ((0.25, "slow"), (1.0, "normal"), (3.0, "fast")):
+            self.anim_speed.add_mark(value, Gtk.PositionType.BOTTOM, text)
+        self._scale_size(self.anim_speed, 240, -1)
+        speed.pack_start(self.anim_speed, False, False, 0)
+        bar.pack_end(speed, False, False, 0)
+        page.pack_start(bar, False, False, 0)
+
+        page.pack_start(self._eyebrow("Animation"), False, False, 0)
+        flow = self._flow(8)
+        self.anim_cards: dict[str, Gtk.Button] = {}
+        self.anim_thumbs: list[Gtk.DrawingArea] = []
+        for a in L.ANIMATIONS:
+            card, area = self._card((120, 48), lambda w, cr, a=a: self._draw_anim_thumb(w, cr, a), a.name,
+                                    lambda _b, a=a: self.choose_animation(a.name))
+            card.set_tooltip_text(a.description)
+            self.anim_cards[a.name] = card
+            self.anim_thumbs.append(area)
+            flow.add(card)
+        page.pack_start(flow, False, False, 0)
+
+        page.pack_start(self._eyebrow("Colors"), False, False, 0)
+        self.anim_theme_note = Gtk.Label(xalign=0, wrap=True)
+        self.anim_theme_note.get_style_context().add_class("dim-label")
+        page.pack_start(self.anim_theme_note, False, False, 0)
+        self.anim_theme_flow = self._flow(12)
+        self.anim_theme_cards: dict[str, Gtk.Button] = {}
+        for p in T.PRESETS:
+            card, _area = self._card((84, 34), self._draw_colors(T.render(p)), p.name,
+                                     lambda _b, p=p: self.choose_anim_theme(p.name))
+            card.set_tooltip_text(p.description)
+            self.anim_theme_cards[p.name] = card
+            self.anim_theme_flow.add(card)
+        page.pack_start(self.anim_theme_flow, False, False, 0)
+
+        hint = Gtk.Label(xalign=0, wrap=True,
+                         label="This computer plays it, frame by frame, while this window is open. When it "
+                               "stops, the keyboard shows its own effect again after about 2 seconds. "
+                               "Nothing is saved on the keyboard.")
+        hint.get_style_context().add_class("dim-label")
+        page.pack_start(hint, False, False, 0)
+        self._show_anim_choice()
+        return page
+
+    def _draw_anim_thumb(self, area, cr, anim):
+        motion = Gtk.Settings.get_default().get_property("gtk-enable-animations")
+        t = (GLib.get_monotonic_time() - self.t0) / 1e6 if motion else 1.0
+        colors = P.colors_from_live(L.frame(anim, T.PRESET_BY_NAME[self.anim_theme], t))
+        KeyboardView.draw_thumbnail(cr, area.get_allocated_width(), area.get_allocated_height(), colors)
 
     def _page_remap(self):
         g = self._grid()
@@ -560,10 +908,10 @@ class AulaWindow(Gtk.Window):
         self.macro_combo.connect("changed", self.on_macro_chosen)
         self.macro_name = Gtk.Entry(placeholder_text="name")
         self.macro_steps = Gtk.TextView(monospace=True, wrap_mode=Gtk.WrapMode.NONE)
-        self.macro_steps.set_size_request(-1, 120)
-        steps_scroll = Gtk.ScrolledWindow(hexpand=True)
+        steps_scroll = Gtk.ScrolledWindow(hexpand=True, shadow_type=Gtk.ShadowType.IN)
+        self._scale_size(steps_scroll, 460, 120)
         steps_scroll.add(self.macro_steps)
-        hint = Gtk.Label(xalign=0, label="One step per line: ctrl+c · enter · wait:100 · text:hello · "
+        hint = Gtk.Label(xalign=0, wrap=True, label="One step per line: ctrl+c · enter · wait:100 · text:hello · "
                                           "down:shift / up:shift")
         self.macro_record = Gtk.ToggleButton(label="⏺ Record")
         self.macro_record.set_tooltip_text("Type on the keyboard to fill in the steps, then click Stop. "
@@ -625,6 +973,8 @@ class AulaWindow(Gtk.Window):
     # ---------------------------------------------------------- loading
     def load(self):
         self.say("Reading keyboard…")
+        self.connection = "connecting"
+        self._show_anim_choice()
 
         def job(kb):
             return (kb.mode, kb.get_led(), kb.get_custom(), kb.get_battery(),
@@ -634,6 +984,7 @@ class AulaWindow(Gtk.Window):
 
     def loaded(self, result):
         mode, led, custom, battery, macros, palette = result
+        self.connection = "ready"
         self.led = led
         self.palette = palette
         self.fill_macros(macros)
@@ -642,6 +993,7 @@ class AulaWindow(Gtk.Window):
         bat = f" · Battery {battery}%" if battery is not None else ""
         self.header.set_subtitle(f"{mode}{bat}")
         self.fill_widgets()
+        self._show_anim_choice()
         self.say("Ready")
 
     def fill_widgets(self):
@@ -676,22 +1028,39 @@ class AulaWindow(Gtk.Window):
         self.updating = False
         self.update_readout()
         self.tick()
+        self.refresh_light()
 
     def update_readout(self):
         if self.led is not None:
             left, right = readout(self.led, len(self.view.selected), self.palette)
+            if self.live_anim is not None:
+                parts = ["LIVE", self.live_anim.name.upper()]
+                if self.live_anim.uses_theme:
+                    parts.append(self.anim_theme.upper())
+                left = "  ·  ".join(parts + ["PLAYED BY THIS COMPUTER"])
             self.readout_left.set_text(left)
             self.readout_right.set_text(right)
 
     def tick(self):
-        """Redraw the effect preview; runs every 50 ms."""
-        if self.led is not None:
+        """Redraw the effect preview, and advance a live animation; runs every 50 ms."""
+        if self.live_anim is not None:
+            now = time.monotonic()
+            self.live_time += (now - self.live_tick) * self.anim_speed.get_value()
+            self.live_tick = now
+            frame = L.frame(self.live_anim, T.PRESET_BY_NAME[self.anim_theme], self.live_time)
+            self.worker.set_live(frame)
+            self.view.preview = P.colors_from_live(frame)        # what the keyboard shows
+            self.view.queue_draw()
+        elif self.led is not None:
             animated = A.is_animated(self.led)
             if animated or self.view.preview is not None or self.led.effect == 1:
                 motion = Gtk.Settings.get_default().get_property("gtk-enable-animations")
                 t = (GLib.get_monotonic_time() - self.t0) / 1e6 if motion else 1.0
                 self.view.preview = A.frame(self.led, t, self.palette)
                 self.view.queue_draw()
+        if self.stack.get_visible_child_name() == "animations":   # the animated cards
+            for area in self.anim_thumbs:
+                area.queue_draw()
         return True
 
     # ---------------------------------------------------------- lighting
@@ -767,6 +1136,7 @@ class AulaWindow(Gtk.Window):
         for idx in self.view.selected:
             self.view.colors[idx] = rgb
         self.view.queue_draw()
+        self.refresh_light()
         self.ensure_custom_effect()
         self.send_custom(f"Colored {len(self.view.selected)} key(s)")
 
@@ -783,11 +1153,67 @@ class AulaWindow(Gtk.Window):
         self.view.queue_draw()
         self.on_selection()
 
+    def choose_animation(self, name):
+        self.anim_name = name
+        if self.live_anim is not None:
+            self.live_anim = L.ANIMATION_BY_NAME[name]
+        self._show_anim_choice()
+
+    def choose_anim_theme(self, name):
+        self.anim_theme = name
+        self._show_anim_choice()
+
+    def _show_anim_choice(self):
+        """Mark the chosen cards and say what is (or would be) playing."""
+        anim = L.ANIMATION_BY_NAME[self.anim_name]
+        # kept apart: "rainbow" and "fire" are the names of both an animation and a theme
+        for cards, chosen in ((self.anim_cards, self.anim_name),
+                              (self.anim_theme_cards, self.anim_theme if anim.uses_theme else None)):
+            for name, card in cards.items():
+                style = card.get_style_context()
+                (style.add_class if name == chosen else style.remove_class)("selected")
+        self.anim_theme_flow.set_sensitive(anim.uses_theme)
+        self.anim_theme_note.set_text("Pick the theme it is made of." if anim.uses_theme else
+                                      f"{anim.name} has its own colors, so it doesn't use a theme.")
+        what = f"<b>{anim.name}</b>" + (f" in <b>{self.anim_theme}</b> colors" if anim.uses_theme else "")
+        playing = self.live_anim is not None
+        self.anim_play.set_sensitive(playing or self.connection == "ready")
+        self.anim_play.set_label("■   Stop" if playing else {"ready": "▶   Play", "connecting": "Connecting…",
+                                                               "lost": "Not connected"}[self.connection])
+        if self.connection == "lost":
+            self.anim_status.set_markup(f"Chosen: {what}.\nKeyboard not connected: press reload at the top left.")
+        elif self.connection == "connecting":
+            self.anim_status.set_markup(f"Chosen: {what}.\nReading the keyboard, Play is ready in a moment.")
+        elif playing:
+            self.anim_status.set_markup(f"Playing {what} on the keyboard.\n"
+                                        "Click other cards to switch while it plays.")
+        else:
+            self.anim_status.set_markup(f"Chosen: {what}.\nPress Play to show it on the keyboard.")
+        self.update_readout()
+        self.refresh_light()
+
+    def on_anim_play(self, button):
+        if button.get_active():
+            if self.connection != "ready":                # can't happen: the button is off then
+                button.set_active(False)
+                return
+            self.live_anim = L.ANIMATION_BY_NAME[self.anim_name]
+            self.live_tick = time.monotonic()
+            self.say(f"Playing {self.live_anim.name} on the keyboard")
+        else:
+            self.live_anim = None
+            self.worker.set_live(None)
+            self.view.preview = None
+            self.say("Animation stopped: the keyboard goes back to its own effect")
+        self._show_anim_choice()
+        self.tick()
+
     def load_preset(self, preset):
         if self.led is None:
             return
         self.view.colors.update(T.render(preset))
         self.view.queue_draw()
+        self.refresh_light()
         self.ensure_custom_effect()
         self.send_custom(f"Theme: {preset.name}")
 
@@ -1037,6 +1463,10 @@ class AulaWindow(Gtk.Window):
         self.status.set_text(text)
 
     def show_error(self, text):
+        self.connection = "lost"
+        if self.live_anim is not None:
+            self.anim_play.set_active(False)
+        self._show_anim_choice()
         self.say(f"Error: {text}")
         self.header.set_subtitle("not connected – press reload")
 
