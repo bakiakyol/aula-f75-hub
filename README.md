@@ -11,7 +11,7 @@
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![platform](https://img.shields.io/badge/platform-Linux-informational)
 
-<img src="docs/screenshots/main.png" alt="Main window: the board drawn in its real key colors, three keys selected for painting" width="820">
+<img src="docs/screenshots/main.png" alt="Main window: the board drawn in its real key colors, three keys selected for painting, the theme gallery below" width="820">
 
 </div>
 
@@ -171,6 +171,8 @@ GUI). `aula preset` on its own lists them.
 Unlike the 15 built-in effects, these are played by the computer, frame by frame
 (about 14 a second), so they can show anything: e.g. a theme flowing across the
 board. Pick one on the **Animations** page of the GUI and press Play, or:
+
+<img src="docs/screenshots/animations.png" alt="Animations page: fire playing on the keyboard, every card previewing its animation" width="820">
 
 ```bash
 aula animate                         # list them

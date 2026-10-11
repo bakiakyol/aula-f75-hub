@@ -11,7 +11,7 @@
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![platform](https://img.shields.io/badge/platform-Linux-informational)
 
-<img src="docs/screenshots/main.png" alt="Ana pencere: klavye gerçek tuş renkleriyle çizilmiş, boyamak için üç tuş seçili" width="820">
+<img src="docs/screenshots/main.png" alt="Ana pencere: klavye gerçek tuş renkleriyle çizilmiş, boyamak için üç tuş seçili, altta tema galerisi" width="820">
 
 </div>
 
@@ -175,6 +175,8 @@ seçilebilir). Sadece `aula preset` yazarsan temaları listeler.
 15 hazır efektin aksine bunları bilgisayar oynatıyor, saniyede yaklaşık 14 kare.
 Bu yüzden her şeyi gösterebiliyorlar: mesela bir temanın klavye üzerinde akmasını.
 Arayüzde **Animations** sayfasından birini seçip Play'e bas ya da:
+
+<img src="docs/screenshots/animations.png" alt="Animations sayfası: klavyede fire oynuyor, her kart kendi animasyonunu gösteriyor" width="820">
 
 ```bash
 aula animate                         # listeler
