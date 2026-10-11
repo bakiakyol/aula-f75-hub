@@ -366,7 +366,11 @@ class LiveTests(unittest.TestCase):
                     presses = L.demo_presses(t)
                     colors = anim.frame(preset, t, presses)
                     frame = L.frame(anim, preset, t, presses)
-                    self.assertLessEqual(len(frame), L.BUDGET, (anim.name, preset.name))
+                    if anim.reactive:                    # full packets, see test_mixed_packets
+                        self.assertEqual(len(frame) % P.CHUNK, 0, (anim.name, preset.name))
+                        self.assertLessEqual(len(frame), P.LIVE_MAX, (anim.name, preset.name))
+                    else:
+                        self.assertLessEqual(len(frame), L.BUDGET, (anim.name, preset.name))
                     self.assertEqual(set(P.colors_from_live(frame)), {k for k, c in colors.items() if any(c)})
 
     def test_groups_stay_put(self):
@@ -425,10 +429,10 @@ class ReactiveTests(unittest.TestCase):
             self.assertEqual(self.shown(name, 5.0, []), self.resting(), name)
 
     def test_ripple_travels(self):
-        g, far = K.key_index("g"), K.key_index("enter")      # Enter is about 5.5 keys right of G
+        g, far = K.key_index("g"), K.key_index("enter")      # Enter is about 7.6 keys from G
         rest = self.resting()
         press = [(g, 1.0)]
-        early, later = self.shown("ripple", 1.05, press), self.shown("ripple", 1.6, press)
+        early, later = self.shown("ripple", 1.05, press), self.shown("ripple", 2.1, press)
         self.assertGreater(sum(early[g]), sum(rest[g]))      # starts at the key
         self.assertEqual(early[far], rest[far])
         self.assertGreater(sum(later[far]), sum(rest[far]))  # and reaches Enter later
@@ -471,6 +475,60 @@ class ReactiveTests(unittest.TestCase):
         for k, ks in busy.items():
             if k not in lit:
                 self.assertEqual(ks - lit, quiet[k] - lit, k)
+
+    def test_resting_keys_never_change(self):
+        """Keys that aren't lit look exactly as at rest, whatever is lit elsewhere
+        (any change there shows as flicker). (A lit key may rest when too many are
+        lit for one frame: the faintest give way.)"""
+        from aula import presets as T
+        L = self.L
+        for name in ("ripple", "afterglow", "heatmap"):
+            anim = L.ANIMATION_BY_NAME[name]
+            for preset in (T.PRESET_BY_NAME[n] for n in ("ocean", "synthwave", "dracula")):
+                rest = P.colors_from_live(L.frame(anim, preset, 0.0, []))
+                for i in range(10):
+                    t = 3 + i * 0.29
+                    presses = L.demo_presses(t)
+                    colors = anim.frame(preset, t, presses)
+                    shown = P.colors_from_live(L.frame(anim, preset, t, presses))
+                    for k, c in colors.items():
+                        if c == L._resting(preset)[k]:
+                            self.assertEqual(shown[k], rest[k], (name, preset.name, t, k))
+
+    def test_mixed_packets(self):
+        """After a lost packet the keyboard fills the gap from the next frame. Any mix
+        of two frames' packets must still read as valid groups showing colors that
+        one of the frames really has (a misread showed keys yellow in ocean)."""
+        import random
+        from aula import presets as T
+        L, rng = self.L, random.Random(5)
+        valid = {idx for idx, *_ in K.KEYS} - {K.BY_NAME["knob"]}
+        for name in ("ripple", "afterglow", "heatmap"):
+            anim = L.ANIMATION_BY_NAME[name]
+            for preset in (T.PRESET_BY_NAME[n] for n in ("ocean", "synthwave", "dracula")):
+                for i in range(12):
+                    t = 3 + i * 0.37
+                    a = L.frame(anim, preset, t, L.demo_presses(t))
+                    b = L.frame(anim, preset, t + 0.09, L.demo_presses(t + 0.09))
+                    self.assertEqual(len(a), len(b))      # the same packet count every frame
+                    colors = set()                        # every group color either frame sends
+                    for frame in (a, b):
+                        j = 0
+                        while j < len(frame):
+                            colors.add(tuple(frame[j:j + 3]))
+                            j += 4 + frame[j + 3]
+                    pa = [a[n:n + P.CHUNK] for n in range(0, len(a), P.CHUNK)]
+                    pb = [b[n:n + P.CHUNK] for n in range(0, len(b), P.CHUNK)]
+                    mixed = b"".join(rng.choice(pair) for pair in zip(pa, pb))
+                    j = 0
+                    while j < len(mixed):                 # strict read: whole groups, real keys
+                        count = mixed[j + 3]
+                        self.assertGreater(count, 0)
+                        self.assertLessEqual(j + 4 + count, len(mixed))
+                        self.assertTrue(set(mixed[j + 4:j + 4 + count]) <= valid)
+                        self.assertIn(tuple(mixed[j:j + 3]), colors)
+                        j += 4 + count
+                    self.assertEqual(set(P.colors_from_live(mixed)), set(P.colors_from_live(a)))
 
     def test_demo_typing(self):
         L = self.L

@@ -181,7 +181,7 @@ _CENTER = {idx: ((r[0] + r[2]) / 2 / _PITCH, (r[1] + r[3]) / 2 / _PITCH)
 _DIST = {a: {b: math.dist(pa, pb) for b, pb in _CENTER.items()} for a, pa in _CENTER.items()}
 
 PRESS_MEMORY = 40.0  # seconds of key presses an animation may still show (the heatmap's memory)
-REST = 0.2      # how bright the theme glows while no key is pressed
+REST = 0.28     # how bright the theme glows while no key is pressed (0.2 too dark, 0.4 hid the rings)
 LEVELS = 4      # lit keys are rounded to this many brightness steps: few colors per frame
 
 
@@ -190,8 +190,9 @@ def _step(x: float) -> float:
 
 
 def _hot(c: RGB, v: float) -> RGB:
-    """A theme color lit up to brightness step v, a little whiter at the top."""
-    return _scale(_mix(c, _WHITE, 0.25 * v), max(REST, v))
+    """A theme color lit up to step v (0..1): from just above the resting glow to full
+    brightness, a little whiter at the top."""
+    return _scale(_mix(c, _WHITE, 0.4 * v), REST + (1 - REST) * v)
 
 
 def _resting(preset: T.Preset) -> dict[int, RGB]:
@@ -213,7 +214,7 @@ def _tone(preset: T.Preset, idx: int) -> RGB:
 def ripple(preset: T.Preset, t: float, presses=()) -> dict[int, RGB]:
     """Every key press sends a ring of its own color across the board."""
     out = _resting(preset)
-    life, speed, width = 1.4, 9.0, 1.2              # seconds, keys per second, keys
+    life, speed, width = 1.6, 7.0, 1.1              # seconds, keys per second, keys (~11 frames/s: slower looks smoother)
     best: dict[int, tuple[float, int]] = {}         # key -> (brightest ring on it, its origin)
     for origin, at in presses:
         age = t - at
@@ -258,10 +259,13 @@ def heatmap(preset: T.Preset, t: float, presses=()) -> dict[int, RGB]:
             if d < 1.3:
                 heat[idx] = heat.get(idx, 0.0) + fade * (1.0 if idx == origin else 0.25)
     out, tones = _resting(preset), _tones(preset)
+    # warm to hot: the theme's three brighter tones at full brightness, then white-hot
+    # (the darkest tone could look darker than the resting board)
+    steps = [tones[1], tones[2], tones[3], _mix(tones[3], _WHITE, 0.5)]
     for idx, h in heat.items():
         level = min(LEVELS, int(h * 1.5))           # 1 press: step 1, about 3 recent ones: the top
-        if level:                                   # the theme's tones, darkest (cold) to brightest (hot)
-            out[idx] = _hot(tones[level - 1], 0.4 + 0.6 * level / LEVELS)
+        if level:
+            out[idx] = steps[level - 1]
     return out
 
 
@@ -316,6 +320,8 @@ def frame(anim: Animation, preset: T.Preset, t: float, presses=()) -> bytes:
     key presses so far (Press tuples, on the same clock as t)."""
     direction = anim.direction or preset.direction
     accents = _accent_groups(preset) if anim.uses_theme else ()
+    if anim.reactive:
+        return layered(anim.frame(preset, t, presses), _resting(preset), direction, accents)
     return encode(anim.frame(preset, t, presses), direction, accents, anim.bands, anim.columns,
                   anim.standout, anim.spare)
 
@@ -361,8 +367,9 @@ def encode(colors: dict[int, RGB], direction: str, fixed: tuple[tuple[int, ...],
         for i in keys:
             if i not in inside:
                 standouts.setdefault(lit[i], []).append(i)
-        avg = tuple(round(sum(lit[i][ch] for i in inside) / len(inside)) for ch in range(3))
-        groups.setdefault(avg, []).extend(inside)
+        if inside:
+            avg = tuple(round(sum(lit[i][ch] for i in inside) / len(inside)) for ch in range(3))
+            groups.setdefault(avg, []).extend(inside)
     for c in list(standouts):                            # close to another band: join that one
         near = min(groups, key=lambda g: _distance(g, c))
         if _distance(near, c) <= standout:
@@ -373,3 +380,112 @@ def encode(colors: dict[int, RGB], direction: str, fixed: tuple[tuple[int, ...],
     if len(lit) + 4 * len(groups) > BUDGET:              # rare: merge the closest groups to fit
         groups = P.median_cut(groups, max(1, (BUDGET - len(lit)) // 4))
     return P.live_frame(groups)
+
+
+# ------------------------------------------------- frames that survive lost packets
+LIT_PACKETS = 4      # packets for the lit keys, after the resting board
+REST_BANDS = 5       # the resting board is dim: a few bands of the theme are enough
+
+
+def layered(colors: dict[int, RGB], rest: dict[int, RGB], direction: str,
+            fixed: tuple[tuple[int, ...], ...] = ()) -> bytes:
+    """A frame for animations that light up keys over a resting board.
+
+    The keyboard assembles a frame from its packets by index and drops it until
+    all have come (tested). So after a lost packet, the next frame's packet fills
+    the gap and the keyboard shows a mix of two frames; if their layouts differ,
+    bytes are read in the wrong place and keys show colors that were never sent.
+    Typing makes packets get lost. So here every packet stands on its own: it is
+    exactly CHUNK bytes of whole groups, and every frame of a theme has the same
+    number of packets. First the resting board, the same bytes in every frame (so
+    it may run across packets, as long as it ends with one), then the lit keys,
+    which override it (a later group wins, tested). Any mix of packets from two
+    frames then reads as a valid frame.
+    """
+    resting, shown = _resting_layer(rest, direction, fixed)
+    base_bytes = b"".join(bytes([*c, len(keys), *keys]) for c, keys in resting)
+    gap = -len(base_bytes) % P.CHUNK
+    base_bytes += _filler(shown)(gap - 4) if gap >= 5 else _fill(shown, gap + P.CHUNK) if gap else b""
+    base = [base_bytes[n:n + P.CHUNK] for n in range(0, len(base_bytes), P.CHUNK)]
+    lit: dict[RGB, list[int]] = {}
+    for i, c in sorted(colors.items()):
+        if i in rest and c != rest[i]:
+            lit.setdefault(c, []).append(i)
+    final = dict(shown)
+    room = 2 * LIT_PACKETS                               # at most two groups per packet
+    while True:
+        layers = P.median_cut(lit, room)
+        for c, keys in layers.items():
+            final.update((i, c) for i in keys)
+        top = _pack(list(layers.items()), final)
+        if len(top) <= LIT_PACKETS:
+            filler = _filler(final)
+            return b"".join(base + top + [filler(5) + filler(1)] * (LIT_PACKETS - len(top)))
+        final = dict(shown)
+        if room > 1:                                     # too much: fewer colors
+            room -= 1
+        else:                                            # still too much: the faintest lit key rests
+            c = min(lit, key=sum)
+            lit[c].pop()
+            if not lit[c]:
+                del lit[c]
+
+
+def _resting_layer(rest, direction, fixed):
+    """The resting board as groups: the accent sets, then the rest in REST_BANDS bands
+    along the direction, each shown in its keys' average color."""
+    pos = T.positions(direction)
+    in_fixed = {i for keys in fixed for i in keys}
+    order = sorted((i for i in rest if i not in in_fixed), key=lambda i: (pos.get(i, 0.0), i))
+    size = -(-len(order) // REST_BANDS)
+    groups, shown = [], {}
+    for keys in [list(k) for k in fixed] + [order[n:n + size] for n in range(0, len(order), size)]:
+        c = tuple(round(sum(rest[i][ch] for i in keys) / len(keys)) for ch in range(3))
+        groups.append((c, keys))
+        shown.update((i, c) for i in keys)
+    return groups, shown
+
+
+def _filler(final: dict[int, RGB]):
+    """Groups that restate keys in the color they show anyway: harmless anywhere."""
+    by_color: dict[RGB, list[int]] = {}
+    for i, c in final.items():
+        by_color.setdefault(c, []).append(i)
+    c, keys = max(by_color.items(), key=lambda ck: len(ck[1]))
+    return lambda k: bytes([*c, k, *keys[:k]])
+
+
+def _fill(final: dict[int, RGB], length: int) -> bytes:
+    """Exactly `length` (>= 10) bytes of harmless groups: two, if one color is too short."""
+    filler = _filler(final)
+    first = min(length - 9, 4 + 10)                      # leave at least 5 for the second
+    return filler(first - 4) + filler(length - first - 4) if length - first >= 5 else filler(length - 4)
+
+
+def _pack(groups, final: dict[int, RGB]) -> list[bytes]:
+    """(color, keys) groups as packets of exactly CHUNK (14) bytes, each starting with
+    a group: one group of 10 keys, or two groups of 6 keys between them (nothing
+    else adds up to 14). A color may be split over several groups; gaps are filled."""
+    out, rest = [], []
+    for c, keys in groups:
+        keys = list(keys)
+        while len(keys) >= 10:
+            out.append(bytes([*c, 10, *keys[:10]]))
+            keys = keys[10:]
+        if keys:
+            rest.append([c, keys])
+    filler = _filler(final)
+
+    def take(item, k):
+        keys, item[1] = item[1][:k], item[1][k:]
+        if not item[1]:
+            rest.remove(item)
+        return bytes([*item[0], k, *keys])
+
+    while rest:
+        rest.sort(key=lambda item: -len(item[1]))        # pair the biggest leftovers first
+        first = take(rest[0], min(5, len(rest[0][1])))
+        need = 6 - first[3]
+        nxt = next((item for item in rest if len(item[1]) >= need), None)
+        out.append(first + (take(nxt, need) if nxt else filler(need)))
+    return out

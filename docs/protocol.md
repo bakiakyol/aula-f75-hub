@@ -167,6 +167,25 @@ Timing, found by watching the board:
   therefore keeps every key in the same group (bands along the animation's
   direction) and only changes the groups' colors.
 - Typing while frames stream works normally (no dropped key releases seen).
+- **A frame is only shown once all its packets came** (tested: blue frames with
+  packet 1 never sent left the board red). Packets are placed by index, so after a
+  lost packet the next frame's packet fills the gap and the keyboard shows a mix of
+  two frames. With different layouts that reads bytes in the wrong place: while
+  typing fast, keys lit up in colors never sent. `live.layered()` avoids this for the
+  key-reacting animations (see below).
+- **A later group overrides an earlier one** for the same key (tested).
+- **Each packet is read as 14 bytes**, whatever its length field says: shorter
+  payloads padded with zeros were misread (tested).
+- **A key index without a LED (the knob, 84) stops the frame** there; the keys
+  after it stay dark (tested). Don't use it as filler.
+
+Frames that survive a lost packet (`live.layered()`): the resting board first,
+byte for byte the same in every frame and ending on a packet boundary; then the lit
+keys in packets that are each exactly 14 bytes of whole groups (one group of 10
+keys, or two groups of 6 keys between them; gaps are filled with groups that
+restate keys in the color they already show); the same number of packets in
+every frame. Any mix of two frames' packets then reads as valid groups. Costs
+12-13 packets a frame (about 11 frames/s).
 
 ## Keymap entry (4 bytes)
 
