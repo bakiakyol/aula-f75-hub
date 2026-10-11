@@ -3,8 +3,10 @@
 import argparse
 import os
 import sys
+import time
 
 from . import keymap as K
+from . import live as L
 from . import macros as M
 from . import presets as T
 from . import protocol as P
@@ -193,6 +195,28 @@ def cmd_key_color(kb: Keyboard, a) -> None:
         kb.set_led(led)
     kb.set_custom(P.custom_from_colors(colors))
     print(f"Sent {len(a.assignments)} color assignment(s) (effect: custom)")
+
+
+def cmd_animate(kb: Keyboard, a) -> None:
+    if a.name is None:
+        for anim in L.ANIMATIONS:
+            print(f"{anim.name:10} {anim.description}" + ("" if anim.uses_theme else "  (no theme)"))
+        return
+    if a.name not in L.ANIMATION_BY_NAME:
+        raise AulaError(f"unknown animation: {a.name!r} (run 'aula animate' to list them)")
+    if a.theme not in T.PRESET_BY_NAME:
+        raise AulaError(f"unknown theme: {a.theme!r} (run 'aula preset' to list them)")
+    anim, preset = L.ANIMATION_BY_NAME[a.name], T.PRESET_BY_NAME[a.theme]
+    print(f"Playing {anim.name}" + (f" with {preset.name}" if anim.uses_theme else "")
+          + ". Ctrl+C stops it; the keyboard then goes back to its own effect.")
+    start = time.monotonic()
+    try:
+        while a.seconds is None or time.monotonic() - start < a.seconds:
+            frame_start = time.monotonic()
+            kb.send_live(L.frame(anim, preset, (frame_start - start) * a.speed))
+            time.sleep(max(0.0, 1 / L.FPS - (time.monotonic() - frame_start)))
+    except KeyboardInterrupt:
+        print()
 
 
 def cmd_preset(kb: Keyboard, a) -> None:
@@ -449,6 +473,15 @@ def main(argv=None) -> int:
     s.add_argument("name", nargs="?")
     s.set_defaults(f=cmd_preset)
 
+    s = sp.add_parser("animate", help="play an animation from this computer (no name: list them)",
+                      description="Streams frames to the keyboard until Ctrl+C. Nothing is stored: "
+                                  "about 2 s after it stops the keyboard shows its own effect again.")
+    s.add_argument("name", nargs="?")
+    s.add_argument("-t", "--theme", default="ocean", help="theme to animate (default ocean)")
+    s.add_argument("-s", "--speed", type=float, default=1.0, help="speed factor (default 1)")
+    s.add_argument("--seconds", type=float, help="stop after this many seconds")
+    s.set_defaults(f=cmd_animate)
+
     s = sp.add_parser("remap", help="remap a key")
     s.add_argument("key", help="physical key to change, e.g. capslock")
     s.add_argument("target", help="new function, e.g. lctrl, esc, f5, none")
@@ -501,7 +534,7 @@ def main(argv=None) -> int:
 
     a = p.parse_args(argv)
     try:
-        if getattr(a, "no_kb", False) or (a.command == "preset" and a.name is None):
+        if getattr(a, "no_kb", False) or (a.command in ("preset", "animate") and a.name is None):
             a.f(None, a)
         else:
             with Keyboard(a.device) as kb:

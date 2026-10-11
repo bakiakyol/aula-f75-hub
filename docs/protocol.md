@@ -69,7 +69,8 @@ every key release. This is a firmware quirk and harmless.
 | 0x09 | 0x49 | 490 | Effect palettes (see "Effect palettes") |
 | 0x0A | 0x4A | 1-2 | Profile per the app. The reply `64 01`: first byte is probably the **battery %** (read 100 while the Fn+B gauge showed 10/10; unconfirmed at lower charge) |
 | 0x0B | – | ? | Screen parameters (the F75 has no screen) |
-| 0x88 / 0x8E | – | – | Real-time lighting / music data (no ack, untested) |
+| 0x88 | – | ≤ 200 | **Real-time lighting** (no ack, not stored), see below |
+| 0x8E | – | – | Light bar music data per the app (no ack, untested) |
 
 ## Effect palettes (0x09 / 0x49, 490 bytes)
 
@@ -122,6 +123,34 @@ official app's `LedOpt` names and numbering do **not** match the firmware):
 
 9, 14, 18-31, 33 and 34 show nothing. 21 (the app's "Self-define") and 29 only show
 the per-key table after it has been re-sent; 32 shows it immediately.
+
+## Real-time lighting (0x88)
+
+Called `SetRealData` in the official app, which uses it for its music mode (code
+around `0x47F700`-`0x481A99` in `OemDrv.exe`). Packets use the normal framing but
+**get no echo**, so nothing confirms they arrived. The keyboard shows a frame until
+the next one comes; about **1.5-2 s** without frames it goes back to its own
+effect. Nothing is written to flash. Verified on hardware over the 2.4G dongle
+(with the custom effect active):
+
+| sub | Data | Result |
+|---|---|---|
+| 2 | `R G B` | the whole board in one color |
+| 1 | groups `R G B count index…`, back to back, ≤ 200 bytes | **per-key colors**; keys not listed are dark |
+| 0 | 378 bytes, planar or interleaved RGB | nothing (the app only uses it for devices with a flag that the F75's class never sets) |
+
+Timing, found by watching the board:
+
+- Gap between packets: **0-1 ms: nothing shows at all. 2-3 ms: frames play but
+  some are silently lost**, which looks choppy. **5 ms: smooth** (about 14 frames/s
+  at 9 packets a frame). 8 ms: nothing lost but visibly stepped (10 frames/s).
+- Long frames lose more: keep them to about 9 packets (126 bytes). A frame that
+  doesn't change shows steadily even at 14 packets, so frames are not drawn
+  half-way.
+- Keys that change groups from one frame to the next flicker. `aula/live.py`
+  therefore keeps every key in the same group (bands along the animation's
+  direction) and only changes the groups' colors.
+- Typing while frames stream works normally (no dropped key releases seen).
 
 ## Keymap entry (4 bytes)
 
@@ -201,3 +230,4 @@ Bluetooth) and of the OS mode (W or E) in white, on top of the running effect.
 ## Open questions
 
 - Wired transport (`CDevG5KB::AccessData`, around `0x48b350`).
+- Real-time lighting over Bluetooth, and while a firmware effect other than custom is active.

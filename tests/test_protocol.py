@@ -257,6 +257,80 @@ class PresetTests(unittest.TestCase):
         self.assertTrue(r < 0x70 and g == 0 and b == 0xFF)
         self.assertEqual(c[K.key_index("pgup")], (0x00, 0xD5, 0xFF))    # rightmost: cyan
 
+    def test_every_theme(self):
+        from aula import presets as T
+        self.assertEqual(len(T.PRESET_BY_NAME), len(T.PRESETS))  # unique names
+        for p in T.PRESETS:
+            self.assertEqual(len(T.render(p)), 80, p.name)
+
+    def test_directions(self):
+        from aula import presets as T
+        fire = T.render(T.PRESET_BY_NAME["fire"])                # y: yellow on top, red at the bottom
+        self.assertEqual(fire[K.key_index("f5")], (0xFF, 0xE0, 0x20))
+        self.assertEqual(fire[K.key_index("space")], (0xFF, 0x00, 0x00))
+        frost = T.render(T.PRESET_BY_NAME["frost"])              # diagonal: from the top left
+        self.assertEqual(frost[K.key_index("esc")], (0xFF, 0xFF, 0xFF))  # accent
+        self.assertEqual(frost[K.key_index("right")], (0x10, 0x30, 0xFF))
+        nova = T.render(T.PRESET_BY_NAME["supernova"])           # center: bright middle, red edges
+        self.assertGreater(sum(nova[K.key_index("h")]), sum(nova[K.key_index("grave")]))
+        self.assertEqual(nova[K.key_index("esc")], (0xC0, 0x00, 0x10))
+
+
+class LiveTests(unittest.TestCase):
+    def test_frame(self):
+        w, a, up = K.key_index("w"), K.key_index("a"), K.key_index("up")
+        frame = P.live_frame({(255, 0, 0): [w, a], (0, 0, 255): [up], (0, 0, 0): [K.key_index("s")]})
+        self.assertEqual(frame, bytes([255, 0, 0, 2, *sorted((w, a)), 0, 0, 255, 1, up]))  # black left out
+        self.assertEqual(P.colors_from_live(frame), {w: (255, 0, 0), a: (255, 0, 0), up: (0, 0, 255)})
+
+    def test_all_dark(self):
+        self.assertEqual(P.live_frame({(0, 0, 0): [K.key_index("w")]}), bytes([0, 0, 0, 1, 0]))
+
+    def test_every_animation_fits(self):
+        from aula import live as L
+        from aula import presets as T
+        for anim in L.ANIMATIONS:
+            for preset in (T.PRESETS if anim.uses_theme else T.PRESETS[:1]):
+                for i in range(12):
+                    colors = anim.frame(preset, i * 0.37)
+                    frame = L.frame(anim, preset, i * 0.37)
+                    self.assertLessEqual(len(frame), L.BUDGET, (anim.name, preset.name))
+                    self.assertEqual(set(P.colors_from_live(frame)), {k for k, c in colors.items() if any(c)})
+
+    def test_groups_stay_put(self):
+        """Breathing only changes brightness, so every key keeps its group partners."""
+        from aula import live as L
+        from aula import presets as T
+        preset = T.PRESET_BY_NAME["synthwave"]
+
+        def partners(t):
+            frame = L.frame(L.ANIMATION_BY_NAME["breathe"], preset, t)
+            groups, i = [], 0
+            while i < len(frame):
+                groups.append(frozenset(frame[i + 4:i + 4 + frame[i + 3]]))
+                i += 4 + frame[i + 3]
+            return set(groups)
+
+        self.assertEqual(partners(0.4), partners(1.9))
+
+    def test_accents_keep_their_color(self):
+        from aula import live as L
+        from aula import presets as T
+        for name in ("synthwave", "dracula", "volcano"):
+            preset = T.PRESET_BY_NAME[name]
+            for t in (0.3, 1.1, 2.6):
+                shown = P.colors_from_live(L.frame(L.ANIMATION_BY_NAME["wave"], preset, t))
+                for key, rgb in preset.accents.items():
+                    self.assertEqual(shown[K.key_index(key)], rgb, (name, key))
+
+    def test_median_cut(self):
+        import random
+        rng = random.Random(1)
+        groups = {tuple(rng.randrange(256) for _ in range(3)): [i] for i in range(60)}
+        merged = P.median_cut(groups, 10)
+        self.assertLessEqual(len(merged), 10)
+        self.assertEqual(sorted(i for ks in merged.values() for i in ks), list(range(60)))
+
 
 class MatrixTests(unittest.TestCase):
     def test_backup_matches_keymap(self):

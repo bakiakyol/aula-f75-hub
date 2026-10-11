@@ -26,7 +26,10 @@ keyboard.
 - **15 lighting effects** with color, brightness and speed: breathing, raindrops,
   snake, waterfall, rainbow wheel, reactive ripples… Single-color effects can use
   **any RGB color**, not just the 7 built-in ones.
-- **Per-key RGB**: click keys on the drawing and paint them. Includes 9 ready-made themes.
+- **Per-key RGB**: click keys on the drawing and paint them. Includes 23 ready-made themes, previewed in their own gallery.
+- **Animations played from the computer**: a theme flowing across the board,
+  breathing or twinkling, a rainbow, fire with sparks. Real per-key frames over the
+  keyboard's real-time channel; nothing is written to the keyboard.
 - **Key remapping** on the base and Fn layers, each change read back and verified.
 - **Macros**: key combos, typed text and delays, run once, N times, while held or
   until another key is pressed. Write the steps or record them from the keyboard.
@@ -134,7 +137,7 @@ On a Turkish Q layout the letters `ğ ü ş ö ç ı` work as key names too.
 
 ### Themes
 
-`aula preset NAME` paints every key at once (or pick one on the Lighting page of the
+`aula preset NAME` paints every key at once (or pick one on the Themes page of the
 GUI). `aula preset` on its own lists them.
 
 | Theme | Colors |
@@ -148,6 +151,46 @@ GUI). `aula preset` on its own lists them.
 | `aurora` | deep blue → aurora green → purple, hot pink WASD |
 | `miami-vice` | bright cyan → hot pink → purple, yellow WASD |
 | `toxic` | dark grey → acid green → dark grey, purple WASD |
+| `rainbow` | the full spectrum from left to right |
+| `ocean` | white surf on top → turquoise → deep blue at the bottom, coral WASD/arrows |
+| `fire` | yellow on top → orange → red at the bottom, like rising flames, white Esc |
+| `forest` | golden canopy on top → leaf green → deep moss, amber WASD/arrows |
+| `sakura` | cherry pink → blossom white → pink on the diagonal, green Esc |
+| `frost` | ice white in the top left → glacier blue → deep blue, white Esc/Enter |
+| `vaporwave` | hot pink → violet → teal on the diagonal, yellow WASD |
+| `galaxy` | pink core → violet → deep space blue at the edges, white stars |
+| `supernova` | white-hot center → yellow → orange → red edges |
+| `nord` | frost blue → teal → aurora purple, snow white WASD/arrows, red Esc |
+| `tokyo-night` | night blue → purple → neon red, cyan WASD/arrows, orange Esc |
+| `catppuccin` | mauve → pink → sky → green pastels, peach WASD/arrows |
+| `gruvbox` | warm red → yellow → green → blue, orange Esc |
+| `royal` | deep purple with gold WASD, arrows, Esc, Enter and Space |
+
+### Animations
+
+Unlike the 15 built-in effects, these are played by the computer, frame by frame
+(about 14 a second), so they can show anything: e.g. a theme flowing across the
+board. Pick one on the **Animations** page of the GUI and press Play, or:
+
+```bash
+aula animate                         # list them
+aula animate wave --theme ocean      # Ctrl+C stops it
+aula animate fire --speed 1.5 --seconds 60
+```
+
+| Animation | What it does |
+|---|---|
+| `wave` | the theme flows across the board, a bright crest riding on it |
+| `breathe` | the theme fades in and out |
+| `sparkle` | the theme glows dimly while keys twinkle white |
+| `rainbow` | a rainbow moving from left to right |
+| `fire` | dark red flames rising and falling, sparks flying up |
+| `blaze` | a bright yellow fire full of sparks |
+
+They run only while the GUI (or `aula animate`) is open. About 2 seconds after
+they stop, the keyboard shows its own effect again. Nothing is saved on it, so they
+don't wear out its memory, and typing works as usual meanwhile. Tested over the
+2.4G dongle; Bluetooth not yet.
 
 ### Macros
 

@@ -176,6 +176,19 @@ class Keyboard:
             raise ValueError("per-key color table must be 378 bytes")
         self.write(P.CMD_SET_CUSTOM, raw)
 
+    def send_live(self, frame: bytes) -> None:
+        """Show a real-time frame (P.live_frame) until the next one arrives.
+
+        Nothing is stored and nothing is acknowledged, so a lost packet silently
+        loses the frame; P.LIVE_GAP keeps that rare. Without a new frame the
+        keyboard returns to its own effect after about 2 seconds. Typing keeps
+        working while frames stream (tested).
+        """
+        for pkt in P.split_packets(P.CMD_LIVE, P.LIVE_KEYS, frame):
+            self._ch.write(pkt)
+            time.sleep(P.LIVE_GAP)
+        self._drain()
+
     def get_matrix(self, layer: int = 0) -> bytes:
         return self.read(P.CMD_SET_MATRIX, layer)
 

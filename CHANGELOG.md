@@ -12,6 +12,22 @@
 - Backups now include the effect palettes and the macro store, so a restore
   also brings back the macros
 - GUI: no more "Gdk was imported without specifying a version" warning
+- GUI: fits any window size. The window no longer insists on 980×820, so it works
+  in tiling window managers and on small screens; text and controls scale with the
+  window, the board and the settings share the height (drag the divider to
+  change it), and long pages scroll
+- GUI: a Themes page with a gallery of previews instead of a row of buttons
+- Animations played from the computer over the keyboard's real-time channel
+  (command 0x88, worked out from the official app and tuned on hardware): wave,
+  breathe, sparkle, rainbow, fire and blaze. `aula animate` and an Animations page
+  in the GUI with live previews on its cards; the drawing shows the frames the
+  keyboard gets. Nothing is stored on the keyboard
+- GUI: one look for the whole window instead of the desktop theme below the board:
+  a dark desk whose only color is the keyboard's current light (buttons, sliders
+  and the chosen cards take on the color the board shows)
+- Fourteen more themes: rainbow, ocean, fire, forest, sakura, frost, vaporwave,
+  galaxy, supernova, nord, tokyo-night, catppuccin, gruvbox and royal. Themes can
+  now run top to bottom, on the diagonal or out from the center
 
 ## 0.4.0 – 2026-10-10
 
