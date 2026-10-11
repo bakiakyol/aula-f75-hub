@@ -12,7 +12,7 @@ import time
 
 from ..errors import AulaError
 from .base import (PRODUCT_WIRED, PRODUCTS, VENDOR_WIRED, VENDOR_WIRELESS, Channel, KeyGuard,
-                   NoKeyGuard)
+                   KeyTracker, NoKeyGuard, keys_in_report)
 
 # Report descriptor fragment: Usage Page 0xFF02, Usage 2, Collection, Report ID 0x13
 _VENDOR_CHANNEL = bytes([0x06, 0x02, 0xFF, 0x09, 0x02, 0xA1, 0x01, 0x85, 0x13])
@@ -41,27 +41,9 @@ def _sibling_nodes(path: str) -> list[str]:
 
 
 def _keys_down(report: bytes, bluetooth: bool = False) -> bool | None:
-    """True/False if the report is a keyboard state report, None otherwise.
-
-    2.4G dongle: boot keyboard interface sends 8-byte reports without an id
-    ([mods, 0, key x5, vendor]); the NKRO bitmap is report 4.
-    Bluetooth: everything arrives on one node; the keyboard report is id 1
-    ([1, mods, 0, key x5, vendor]) and the NKRO bitmap is id 2. (Id 4 is system
-    control there, so it must not be read as keys.)
-    """
-    if not report:
-        return None
-    if bluetooth:
-        if report[0] == 0x01 and len(report) >= 8:
-            return bool(report[1] or any(report[3:8]))
-        if report[0] == 0x02:
-            return any(report[1:])
-        return None
-    if len(report) == 8:
-        return bool(report[0] or any(report[2:7]))
-    if report[0] == 0x04:
-        return any(report[1:])
-    return None
+    """True/False if the report is a keyboard state report, None otherwise."""
+    keys = keys_in_report(report, bluetooth)
+    return None if keys is None else bool(keys)
 
 
 def find_devices() -> list[dict]:
@@ -126,8 +108,22 @@ class LinuxKeyGuard(KeyGuard):
                 self._key_fds.append(os.open(node, os.O_RDONLY | os.O_NONBLOCK))
             except OSError:
                 pass
-        self._held: dict[int, bool] = {}
+        self._tracker = KeyTracker()
         self._last_key_event = time.monotonic()
+
+    def _read(self, timeout: float) -> None:
+        """Take in the key reports that arrive within `timeout` seconds."""
+        for fd in select.select(self._key_fds, [], [], timeout)[0]:
+            while True:
+                try:
+                    report = os.read(fd, 64)
+                except BlockingIOError:
+                    break
+                keys = keys_in_report(report, self.bluetooth)
+                if keys is not None:
+                    boot = not self.bluetooth and len(report) == 8   # boot reports have no id
+                    self._tracker.feed((fd, "boot" if boot else report[0]), keys)
+                    self._last_key_event = time.monotonic()
 
     def wait_released(self, quiet: float = 0.4, limit: float = 5.0) -> None:
         """Returns at once if nothing was typed since the last call."""
@@ -136,19 +132,17 @@ class LinuxKeyGuard(KeyGuard):
             return
         start = time.monotonic()
         while True:
-            for fd in select.select(self._key_fds, [], [], 0.05)[0]:
-                try:
-                    state = _keys_down(os.read(fd, 64), self.bluetooth)
-                except BlockingIOError:
-                    continue
-                if state is not None:
-                    self._held[fd] = state
-                    self._last_key_event = time.monotonic()
+            self._read(0.05)
             now = time.monotonic()
-            if not any(self._held.values()) and now - self._last_key_event >= quiet:
+            if not self._tracker.held() and now - self._last_key_event >= quiet:
                 return
             if now - start > limit:
                 raise AulaError("a key seems to be held down; release all keys and try again")
+
+    def presses(self) -> list[int]:
+        if self._key_fds:
+            self._read(0)
+        return self._tracker.take_presses()
 
     def close(self) -> None:
         for fd in self._key_fds:

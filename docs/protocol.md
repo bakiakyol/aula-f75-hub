@@ -54,7 +54,23 @@ NKRO report id 4) and only sends a command once all keys are up and the keyboard
 been idle for 0.4 s.
 
 The boot interface also sends three `00 00 01 00…` (ErrorRollOver) reports after
-every key release. This is a firmware quirk and harmless.
+every key release. This is a firmware quirk and harmless, but usages 1-3 must not
+be taken for keys.
+
+### Key reports (read for the key-reacting animations)
+
+From the report descriptors (2.4G dongle):
+
+- Boot interface, no report id, 8 bytes: `[modifier bits, 0, key x5, vendor]`.
+  Modifier bit n is usage `0xE0 + n` (left Ctrl first).
+- Report 4 on the configuration node: NKRO bitmap, 160 bits, bit n = usage n
+  (0x00-0x9F). Modifiers are not in it; they only come in the boot report.
+- Bluetooth: keyboard report id 1 (`[1, mods, 0, key x5, vendor]`), NKRO id 2.
+
+A key can show up in both reports at once, so `KeyTracker` (aula/backends/base.py)
+counts a press when a usage becomes held in the union of all reports. Fn sends no
+report. The usage is mapped back to the key that sends it by default
+(`keymap.USAGE_INDEX`).
 
 ## Commands
 

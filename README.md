@@ -188,11 +188,19 @@ aula animate fire --speed 1.5 --seconds 60
 | `rainbow` | a rainbow moving from left to right |
 | `fire` | dark red flames rising and falling, sparks flying up |
 | `blaze` | a bright yellow fire full of sparks |
+| `ripple` | every key you press sends a ring across the board |
+| `afterglow` | pressed keys flare up and fade slowly: typing leaves a trail |
+| `heatmap` | the keys you type most warm up through the theme's colors |
+
+The last three react to the keys you press, in any window. For that the app reads
+the keyboard's own key reports (which keys go down, nothing else), only while one
+of them plays; nothing is stored or sent anywhere. The Fn key isn't reported, so it
+doesn't light up, and a remapped key lights up where its new function normally sits.
 
 They run only while the GUI (or `aula animate`) is open. About 2 seconds after
 they stop, the keyboard shows its own effect again. Nothing is saved on it, so they
 don't wear out its memory, and typing works as usual meanwhile. Tested over the
-2.4G dongle; Bluetooth not yet.
+2.4G dongle; Bluetooth not yet, and the key-reacting ones not on a real keyboard yet.
 
 ### Macros
 

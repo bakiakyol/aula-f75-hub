@@ -5,8 +5,9 @@ the board. The keyboard only shows them while frames keep coming, so the GUI or
 `aula animate` has to stay open; about 2 s after the last frame the keyboard goes
 back to its own effect. Nothing is stored on the keyboard.
 
-Every animation is a pure function of (theme, time), so the GUI can draw the
-same frames it sends. Time runs faster or slower to change the speed.
+Every animation is a pure function of (theme, time, key presses), so the GUI can
+draw the same frames it sends. Time runs faster or slower to change the speed;
+key presses carry the time they happened at on that same clock.
 
 What looks smooth on the keyboard was found by trying it on one (see encode()):
 short frames, sent with gaps, in which every key stays in the same group from
@@ -62,7 +63,7 @@ def _accents(preset: T.Preset) -> dict[int, RGB]:
     return {K.key_index(k): rgb for k, rgb in preset.accents.items()}
 
 
-def wave(preset: T.Preset, t: float) -> dict[int, RGB]:
+def wave(preset: T.Preset, t: float, _presses=()) -> dict[int, RGB]:
     """The theme's gradient flows along its own direction, a bright crest riding on it."""
     out = {}
     for idx, p in T.positions(preset.direction).items():
@@ -75,7 +76,7 @@ def wave(preset: T.Preset, t: float) -> dict[int, RGB]:
     return out
 
 
-def breathe(preset: T.Preset, t: float) -> dict[int, RGB]:
+def breathe(preset: T.Preset, t: float, _presses=()) -> dict[int, RGB]:
     """The whole theme fades in and out."""
     seen = 0.15 + 0.85 * (0.5 - 0.5 * math.cos(2 * math.pi * t * 0.3))   # brightness as the eye sees it
     v = seen ** 2.2                                      # LED power: the eye is far more sensitive when dim
@@ -85,7 +86,7 @@ def breathe(preset: T.Preset, t: float) -> dict[int, RGB]:
 _TWINKLE = [(0.15, _WHITE), (0.45, (110, 110, 110))]   # (seconds, color): bright, then half
 
 
-def sparkle(preset: T.Preset, t: float) -> dict[int, RGB]:
+def sparkle(preset: T.Preset, t: float, _presses=()) -> dict[int, RGB]:
     """The theme glows dimly while keys twinkle white, here and there."""
     out = {}
     for idx, c in _theme(preset).items():
@@ -96,7 +97,7 @@ def sparkle(preset: T.Preset, t: float) -> dict[int, RGB]:
     return out
 
 
-def rainbow(_preset: T.Preset, t: float) -> dict[int, RGB]:
+def rainbow(_preset: T.Preset, t: float, _presses=()) -> dict[int, RGB]:
     """A rainbow moving from left to right."""
     out = {}
     for idx, x in _X.items():
@@ -134,8 +135,8 @@ def _spark(out: dict[int, RGB], style: _Fire, x: float, progress: float) -> None
             out[below] = style.trail
 
 
-def _fire(style: _Fire) -> Callable[[T.Preset, float], dict[int, RGB]]:
-    def frame(_preset: T.Preset, t: float) -> dict[int, RGB]:
+def _fire(style: _Fire) -> Callable[..., dict[int, RGB]]:
+    def frame(_preset: T.Preset, t: float, _presses=()) -> dict[int, RGB]:
         t *= style.pace
         out = {}
         for idx, y in _Y.items():
@@ -171,19 +172,129 @@ fire = _fire(_Fire(_EMBER, ((255, 110, 0), (220, 40, 0), (150, 0, 0)), (70, 0, 0
 blaze = _fire(_Fire(_BLAZE, ((255, 240, 120), (255, 170, 0), (255, 80, 0)), (150, 30, 0), 0.8, 0.9, 7))
 
 
+# ------------------------------------------------------------- reacting to keys
+Press = tuple[int, float]   # (matrix index, time of the press on the animation's clock)
+
+_PITCH = 38.5                # key width on the drawing (keymap coordinates)
+_CENTER = {idx: ((r[0] + r[2]) / 2 / _PITCH, (r[1] + r[3]) / 2 / _PITCH)
+           for idx, _n, _l, r in K.KEYS if r != (0, 0, 0, 0)}
+_DIST = {a: {b: math.dist(pa, pb) for b, pb in _CENTER.items()} for a, pa in _CENTER.items()}
+
+PRESS_MEMORY = 40.0  # seconds of key presses an animation may still show (the heatmap's memory)
+REST = 0.2      # how bright the theme glows while no key is pressed
+LEVELS = 4      # lit keys are rounded to this many brightness steps: few colors per frame
+
+
+def _step(x: float) -> float:
+    return round(max(0.0, min(1.0, x)) * LEVELS) / LEVELS
+
+
+def _hot(c: RGB, v: float) -> RGB:
+    """A theme color lit up to brightness step v, a little whiter at the top."""
+    return _scale(_mix(c, _WHITE, 0.25 * v), max(REST, v))
+
+
+def _resting(preset: T.Preset) -> dict[int, RGB]:
+    return {idx: _scale(c, REST) for idx, c in _theme(preset).items()}
+
+
+def _tones(preset: T.Preset) -> list[RGB]:
+    """Four colors along the theme's gradient, darkest first: the colors keys light up in.
+    Few shared tones keep a frame to few groups, so nothing gets mixed into a color the
+    theme doesn't have."""
+    return sorted((T.color_at(preset, i / 3) for i in range(4)), key=lambda c: 2 * c[0] + 5 * c[1] + c[2])
+
+
+def _tone(preset: T.Preset, idx: int) -> RGB:
+    """The theme's tone at a key (its gradient color, without the accent keys)."""
+    return T.color_at(preset, round(T.positions(preset.direction)[idx] * 3) / 3)
+
+
+def ripple(preset: T.Preset, t: float, presses=()) -> dict[int, RGB]:
+    """Every key press sends a ring of its own color across the board."""
+    out = _resting(preset)
+    life, speed, width = 1.4, 9.0, 1.2              # seconds, keys per second, keys
+    best: dict[int, tuple[float, int]] = {}         # key -> (brightest ring on it, its origin)
+    for origin, at in presses:
+        age = t - at
+        if not 0 <= age < life or origin not in _DIST:
+            continue
+        for idx, d in _DIST[origin].items():
+            v = _step(max(0.0, 1 - abs(d - age * speed) / width) * (1 - age / life))
+            if v > best.get(idx, (0.0, origin))[0]:
+                best[idx] = (v, origin)
+    for idx, (v, origin) in best.items():
+        out[idx] = _hot(_tone(preset, origin), v)
+    return out
+
+
+def afterglow(preset: T.Preset, t: float, presses=()) -> dict[int, RGB]:
+    """A pressed key flares up and fades back into the theme, warming its neighbours,
+    so typing leaves a fading trail."""
+    out = _resting(preset)
+    glow: dict[int, float] = {}
+    for origin, at in presses:
+        age = t - at
+        if not 0 <= age < 3.0 or origin not in _DIST:
+            continue
+        for idx, d in _DIST[origin].items():
+            v = math.exp(-age * 1.1) * (1.0 if idx == origin else 0.4 * max(0.0, 1 - (d - 0.8) / 0.6))
+            glow[idx] = max(glow.get(idx, 0.0), v)
+    for idx, v in glow.items():
+        if _step(v):
+            out[idx] = _hot(_tone(preset, idx), _step(v))
+    return out
+
+
+def heatmap(preset: T.Preset, t: float, presses=()) -> dict[int, RGB]:
+    """The keys you type most warm up through the theme's colors, and cool down slowly."""
+    heat: dict[int, float] = {}
+    for origin, at in presses:
+        age = t - at
+        if not 0 <= age < PRESS_MEMORY or origin not in _DIST:
+            continue
+        fade = math.exp(-age / 8.0)
+        for idx, d in _DIST[origin].items():
+            if d < 1.3:
+                heat[idx] = heat.get(idx, 0.0) + fade * (1.0 if idx == origin else 0.25)
+    out, tones = _resting(preset), _tones(preset)
+    for idx, h in heat.items():
+        level = min(LEVELS, int(h * 1.5))           # 1 press: step 1, about 3 recent ones: the top
+        if level:                                   # the theme's tones, darkest (cold) to brightest (hot)
+            out[idx] = _hot(tones[level - 1], 0.4 + 0.6 * level / LEVELS)
+    return out
+
+
+_DEMO = [K.key_index("space" if c == " " else c) for c in "the quick brown fox jumps over the lazy dog "]
+
+
+def demo_presses(t: float, window: float = 40.0) -> list[Press]:
+    """Pretend typing for previews: a key about every 0.3 s, spelling a sentence."""
+    out = []
+    for k in range(max(0, int((t - window) / 0.3)), int(t / 0.3) + 1):
+        at = k * 0.3 + 0.12 * random.Random(k).random()
+        if at <= t:
+            out.append((_DEMO[k % len(_DEMO)], at))
+    return out
+
+
 @dataclass(frozen=True)
 class Animation:
     name: str
     description: str
-    frame: Callable[[T.Preset, float], dict[int, RGB]]
+    frame: Callable[..., dict[int, RGB]]   # (theme, time, key presses) -> colors
     uses_theme: bool = True
+    reactive: bool = False        # lights up the keys you press
     direction: str | None = None  # how its colors change across the board (None: the theme's)
     bands: int | None = None      # groups along the direction (None: as many as fit)
     columns: int = 1              # and across the board, for colors that change both ways
     standout: int = STANDOUT      # 255: no key stands out, every key shows its band's color
+    spare: int = SPARE            # groups kept for keys that stand out
 
 
 _FIRE = {"uses_theme": False, "direction": "y", "bands": 6, "columns": _COLUMNS}
+# the resting theme needs few bands at its low brightness; the lit keys get the groups
+_REACTIVE = {"reactive": True, "spare": 6}
 
 ANIMATIONS = [
     Animation("wave", "the theme flows across the board", wave),
@@ -193,15 +304,20 @@ ANIMATIONS = [
               bands=11, standout=255),
     Animation("fire", "dark red flames rising and falling, sparks flying up", fire, **_FIRE),
     Animation("blaze", "a bright yellow fire full of sparks", blaze, **_FIRE),
+    Animation("ripple", "every key you press sends out a ring of its color", ripple, **_REACTIVE),
+    Animation("afterglow", "pressed keys flare up and fade back slowly", afterglow, **_REACTIVE),
+    Animation("heatmap", "the keys you type most warm up through the theme", heatmap, **_REACTIVE),
 ]
 ANIMATION_BY_NAME = {a.name: a for a in ANIMATIONS}
 
 
-def frame(anim: Animation, preset: T.Preset, t: float) -> bytes:
-    """The real-time frame (P.live_frame) of an animation at time t."""
+def frame(anim: Animation, preset: T.Preset, t: float, presses=()) -> bytes:
+    """The real-time frame (P.live_frame) of an animation at time t, given the
+    key presses so far (Press tuples, on the same clock as t)."""
     direction = anim.direction or preset.direction
     accents = _accent_groups(preset) if anim.uses_theme else ()
-    return encode(anim.frame(preset, t), direction, accents, anim.bands, anim.columns, anim.standout)
+    return encode(anim.frame(preset, t, presses), direction, accents, anim.bands, anim.columns,
+                  anim.standout, anim.spare)
 
 
 def _accent_groups(preset: T.Preset) -> tuple[tuple[int, ...], ...]:
@@ -212,7 +328,8 @@ def _accent_groups(preset: T.Preset) -> tuple[tuple[int, ...], ...]:
 
 
 def encode(colors: dict[int, RGB], direction: str, fixed: tuple[tuple[int, ...], ...] = (),
-           bands: int | None = None, columns: int = 1, standout: int = STANDOUT) -> bytes:
+           bands: int | None = None, columns: int = 1, standout: int = STANDOUT,
+           spare: int = SPARE) -> bytes:
     """A frame of colors -> a real-time frame (P.live_frame) that looks smooth.
 
     Every frame has to fit in BUDGET bytes, so keys share colors. They are put in
@@ -220,12 +337,12 @@ def encode(colors: dict[int, RGB], direction: str, fixed: tuple[tuple[int, ...],
     average of its keys: had keys moved between groups from frame to frame, their
     colors would jump. The `fixed` key sets (a theme's accent keys) are groups of
     their own. Keys that differ a lot from their band join a band of a similar
-    color, or else (a key flashing) share the SPARE groups. With `columns` the
+    color, or else (a key flashing) share the `spare` groups. With `columns` the
     bands are also cut across the board, into cells.
     """
     lit = {i: c for i, c in colors.items() if any(c)}
     in_fixed = {i for keys in fixed for i in keys}
-    n = bands or max(1, (BUDGET - len(_X)) // 4 - len(fixed) - SPARE)   # the same in every frame
+    n = bands or max(1, (BUDGET - len(_X)) // 4 - len(fixed) - spare)   # the same in every frame
     pos = T.positions(direction)
     cells: dict[tuple[int, int], list[int]] = {}
     for i in lit:
