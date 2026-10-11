@@ -192,11 +192,20 @@ aula animate fire --speed 1.5 --seconds 60
 | `rainbow` | soldan sağa akan gökkuşağı |
 | `fire` | yükselip alçalan koyu kırmızı alevler, yukarı uçan kıvılcımlar |
 | `blaze` | kıvılcım dolu parlak sarı ateş |
+| `ripple` | bastığın her tuştan klavyeye halka yayılıyor |
+| `afterglow` | basılan tuşlar parlayıp yavaşça sönüyor, yazdıkça arkada iz kalıyor |
+| `heatmap` | en çok bastığın tuşlar temanın renkleriyle ısınıyor |
+
+Son üçü, hangi pencerede olursan ol, bastığın tuşlara tepki veriyor. Bunun için uygulama
+klavyenin kendi tuş raporlarını okuyor (sadece hangi tuşa basıldığını, başka hiçbir
+şeyi) ve bunu sadece bu animasyonlardan biri oynarken yapıyor. Hiçbir şey kaydedilmiyor
+ya da bir yere gönderilmiyor. Fn tuşu rapor edilmediği için yanmıyor. Yeri değiştirilmiş
+bir tuş ise yeni işlevinin normalde bulunduğu yerde yanıyor.
 
 Sadece arayüz (ya da `aula animate`) açıkken çalışırlar. Durduktan yaklaşık 2 saniye
 sonra klavye kendi efektine döner. Klavyeye hiçbir şey kaydedilmediği için hafızasını
 yıpratmazlar, bu sırada yazı yazmak da normal çalışır. 2.4G alıcıyla denendi,
-Bluetooth henüz denenmedi.
+Bluetooth henüz denenmedi. Tuşlara tepki verenler gerçek klavyede henüz denenmedi.
 
 ### Makrolar
 

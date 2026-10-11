@@ -22,6 +22,10 @@
   breathe, sparkle, rainbow, fire and blaze. `aula animate` and an Animations page
   in the GUI with live previews on its cards; the drawing shows the frames the
   keyboard gets. Nothing is stored on the keyboard
+- Animations that react to the keys you press, in any window: ripple, afterglow
+  and heatmap (`aula animate ripple`, and their own row on the Animations page,
+  whose cards preview them with pretend typing). The keys come from the
+  keyboard's own key reports (boot and NKRO), read only while one plays
 - GUI: one look for the whole window instead of the desktop theme below the board:
   a dark desk whose only color is the keyboard's current light (buttons, sliders
   and the chosen cards take on the color the board shows)

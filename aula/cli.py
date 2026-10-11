@@ -200,7 +200,8 @@ def cmd_key_color(kb: Keyboard, a) -> None:
 def cmd_animate(kb: Keyboard, a) -> None:
     if a.name is None:
         for anim in L.ANIMATIONS:
-            print(f"{anim.name:10} {anim.description}" + ("" if anim.uses_theme else "  (no theme)"))
+            notes = [n for n, on in (("no theme", not anim.uses_theme), ("reacts to keys", anim.reactive)) if on]
+            print(f"{anim.name:10} {anim.description}" + (f"  ({', '.join(notes)})" if notes else ""))
         return
     if a.name not in L.ANIMATION_BY_NAME:
         raise AulaError(f"unknown animation: {a.name!r} (run 'aula animate' to list them)")
@@ -209,11 +210,17 @@ def cmd_animate(kb: Keyboard, a) -> None:
     anim, preset = L.ANIMATION_BY_NAME[a.name], T.PRESET_BY_NAME[a.theme]
     print(f"Playing {anim.name}" + (f" with {preset.name}" if anim.uses_theme else "")
           + ". Ctrl+C stops it; the keyboard then goes back to its own effect.")
+    if anim.reactive:
+        print("Type anywhere: it lights up the keys you press.")
+    kb.key_presses()                                  # forget keys pressed before it started
+    presses: list[L.Press] = []
     start = time.monotonic()
     try:
         while a.seconds is None or time.monotonic() - start < a.seconds:
             frame_start = time.monotonic()
-            kb.send_live(L.frame(anim, preset, (frame_start - start) * a.speed))
+            t = (frame_start - start) * a.speed
+            presses = [p for p in presses if t - p[1] < L.PRESS_MEMORY] + [(i, t) for i in kb.key_presses()]
+            kb.send_live(L.frame(anim, preset, t, presses))
             time.sleep(max(0.0, 1 / L.FPS - (time.monotonic() - frame_start)))
     except KeyboardInterrupt:
         print()

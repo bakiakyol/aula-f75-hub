@@ -127,6 +127,15 @@ MODIFIERS = {
 }
 
 
+# HID usage -> matrix index of the key that sends it by default (for key-press
+# animations; a remapped key lights up where its new function normally sits).
+# Fn sends nothing, so it has no entry.
+USAGE_INDEX = {
+    **{code: BY_NAME[name] for name, code in HID.items() if name in BY_NAME},
+    **{0xE0 + bit.bit_length() - 1: BY_NAME[name] for name, bit in MODIFIERS.items() if name in BY_NAME},
+}
+
+
 def key_index(name: str) -> int:
     """Resolve a key name to its matrix index. Use '#53' for a raw index."""
     n = name.strip().lower()

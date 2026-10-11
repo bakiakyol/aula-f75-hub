@@ -7,6 +7,7 @@ the channel is found and opened comes from aula.backends (hidraw on Linux).
 import random
 import time
 
+from . import keymap as K
 from . import protocol as P
 from .backends import find_devices, open_device
 from .errors import AulaError
@@ -188,6 +189,11 @@ class Keyboard:
             self._ch.write(pkt)
             time.sleep(P.LIVE_GAP)
         self._drain()
+
+    def key_presses(self) -> list[int]:
+        """Matrix indices of the keys pressed since the last call (read, never sent:
+        the keyboard's own key reports)."""
+        return [K.USAGE_INDEX[u] for u in self._guard.presses() if u in K.USAGE_INDEX]
 
     def get_matrix(self, layer: int = 0) -> bytes:
         return self.read(P.CMD_SET_MATRIX, layer)

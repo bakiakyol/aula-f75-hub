@@ -3,6 +3,7 @@
 Start with:  ./aula.sh gui   (or python3 -m aula gui)
 """
 
+import collections
 import colorsys
 import math
 import os
@@ -229,7 +230,8 @@ class Worker:
 
     Jobs submitted with the same `key` are coalesced: only the newest one runs,
     so dragging a slider sends just the final value. Between jobs it streams the
-    real-time frame in `live` (an animation), if there is one.
+    real-time frame in `live` (an animation), if there is one, and collects the
+    keys pressed meanwhile in `presses` (matrix indices) for animations that react.
     """
 
     RESEND = 0.5  # repeat an unchanged frame this often, or the keyboard drops it after ~2 s
@@ -241,6 +243,9 @@ class Worker:
         self.kb: Keyboard | None = None
         self.on_error = on_error
         self.live: bytes | None = None
+        self.presses: collections.deque[int] = collections.deque(maxlen=256)
+        self._sent, self._sent_at = None, 0.0
+        self._forget = False                            # drop presses from before streaming began
         threading.Thread(target=self._run, daemon=True).start()
 
     def submit(self, fn, done=None, key=None):
@@ -254,25 +259,36 @@ class Worker:
         idle = self.live is None
         self.live = frame
         if idle and frame is not None:
+            self.presses.clear()
             self.q.put(None)                             # wake the thread up
 
     def _run(self):
-        sent, sent_at = None, 0.0
         while True:
             try:
                 item = self.q.get(timeout=0.01 if self.live is not None else None)
             except queue.Empty:
-                frame = self.live
-                if frame is not None and (frame is not sent or time.monotonic() - sent_at > self.RESEND):
-                    sent, sent_at = frame, time.monotonic()
-                    self._call(lambda kb: kb.send_live(frame), None)
+                if self.live is not None:
+                    self._call(self._stream, None)
                 continue
-            if item is None:
+            if item is None:                             # streaming starts
+                self._forget = True
                 continue
             seq, key, fn, done = item
             if key and self.latest.get(key) != seq:
                 continue
             self._call(fn, done)
+
+    def _stream(self, kb):
+        """Collect the keys pressed, and send the frame if it is new or due again."""
+        pressed = kb.key_presses()
+        if self._forget:
+            self._forget = False
+        else:
+            self.presses.extend(pressed)
+        frame = self.live
+        if frame is not None and (frame is not self._sent or time.monotonic() - self._sent_at > self.RESEND):
+            self._sent, self._sent_at = frame, time.monotonic()
+            kb.send_live(frame)
 
     def _call(self, fn, done):
         try:
@@ -489,6 +505,7 @@ class AulaWindow(Gtk.Window):
         self.live_anim: L.Animation | None = None  # animation streaming from this computer
         self.connection = "connecting"              # connecting, ready or lost
         self.live_time = 0.0                        # its clock (runs faster with more speed)
+        self.live_presses: list[L.Press] = []      # keys pressed while it plays, on that clock
         self.live_tick = 0.0
         self.led: P.LedConfig | None = None
         self.palette: bytes | None = None  # effect palettes (0x49)
@@ -609,7 +626,9 @@ class AulaWindow(Gtk.Window):
 
     def refresh_light(self):
         """Light the controls in the color the keyboard shows now."""
-        if self.live_anim is not None:
+        if self.live_anim is not None and self.live_anim.uses_theme:
+            colors = T.render(T.PRESET_BY_NAME[self.anim_theme])
+        elif self.live_anim is not None:
             colors = P.colors_from_live(L.frame(self.live_anim, T.PRESET_BY_NAME[self.anim_theme], 1.0))
         else:
             colors = self.view.preview if self.view.preview is not None else self.view.colors
@@ -801,18 +820,19 @@ class AulaWindow(Gtk.Window):
         bar.pack_end(speed, False, False, 0)
         page.pack_start(bar, False, False, 0)
 
-        page.pack_start(self._eyebrow("Animation"), False, False, 0)
-        flow = self._flow(8)
         self.anim_cards: dict[str, Gtk.Button] = {}
         self.anim_thumbs: list[Gtk.DrawingArea] = []
-        for a in L.ANIMATIONS:
-            card, area = self._card((120, 48), lambda w, cr, a=a: self._draw_anim_thumb(w, cr, a), a.name,
-                                    lambda _b, a=a: self.choose_animation(a.name))
-            card.set_tooltip_text(a.description)
-            self.anim_cards[a.name] = card
-            self.anim_thumbs.append(area)
-            flow.add(card)
-        page.pack_start(flow, False, False, 0)
+        for title, reactive in (("Animation", False), ("Reacts to your keys", True)):
+            page.pack_start(self._eyebrow(title), False, False, 0)
+            flow = self._flow(8)
+            for a in (a for a in L.ANIMATIONS if a.reactive == reactive):
+                card, area = self._card((120, 48), lambda w, cr, a=a: self._draw_anim_thumb(w, cr, a),
+                                        a.name, lambda _b, a=a: self.choose_animation(a.name))
+                card.set_tooltip_text(a.description)
+                self.anim_cards[a.name] = card
+                self.anim_thumbs.append(area)
+                flow.add(card)
+            page.pack_start(flow, False, False, 0)
 
         page.pack_start(self._eyebrow("Colors"), False, False, 0)
         self.anim_theme_note = Gtk.Label(xalign=0, wrap=True)
@@ -840,7 +860,8 @@ class AulaWindow(Gtk.Window):
     def _draw_anim_thumb(self, area, cr, anim):
         motion = Gtk.Settings.get_default().get_property("gtk-enable-animations")
         t = (GLib.get_monotonic_time() - self.t0) / 1e6 if motion else 1.0
-        colors = P.colors_from_live(L.frame(anim, T.PRESET_BY_NAME[self.anim_theme], t))
+        presses = L.demo_presses(t) if anim.reactive else ()            # pretend typing
+        colors = P.colors_from_live(L.frame(anim, T.PRESET_BY_NAME[self.anim_theme], t, presses))
         KeyboardView.draw_thumbnail(cr, area.get_allocated_width(), area.get_allocated_height(), colors)
 
     def _page_remap(self):
@@ -1047,7 +1068,11 @@ class AulaWindow(Gtk.Window):
             now = time.monotonic()
             self.live_time += (now - self.live_tick) * self.anim_speed.get_value()
             self.live_tick = now
-            frame = L.frame(self.live_anim, T.PRESET_BY_NAME[self.anim_theme], self.live_time)
+            while self.worker.presses:
+                self.live_presses.append((self.worker.presses.popleft(), self.live_time))
+            self.live_presses = [p for p in self.live_presses if self.live_time - p[1] < L.PRESS_MEMORY]
+            frame = L.frame(self.live_anim, T.PRESET_BY_NAME[self.anim_theme], self.live_time,
+                            self.live_presses)
             self.worker.set_live(frame)
             self.view.preview = P.colors_from_live(frame)        # what the keyboard shows
             self.view.queue_draw()
@@ -1180,15 +1205,17 @@ class AulaWindow(Gtk.Window):
         self.anim_play.set_sensitive(playing or self.connection == "ready")
         self.anim_play.set_label("■   Stop" if playing else {"ready": "▶   Play", "connecting": "Connecting…",
                                                                "lost": "Not connected"}[self.connection])
+        typing = "\nType anywhere, in any window: it lights up the keys you press." if anim.reactive else ""
         if self.connection == "lost":
             self.anim_status.set_markup(f"Chosen: {what}.\nKeyboard not connected: press reload at the top left.")
         elif self.connection == "connecting":
             self.anim_status.set_markup(f"Chosen: {what}.\nReading the keyboard, Play is ready in a moment.")
         elif playing:
-            self.anim_status.set_markup(f"Playing {what} on the keyboard.\n"
-                                        "Click other cards to switch while it plays.")
+            self.anim_status.set_markup(f"Playing {what} on the keyboard."
+                                        + (typing or "\nClick other cards to switch while it plays."))
         else:
-            self.anim_status.set_markup(f"Chosen: {what}.\nPress Play to show it on the keyboard.")
+            self.anim_status.set_markup(f"Chosen: {what}.\nPress Play to show it on the keyboard."
+                                        + (" Then type: it reacts to the keys you press." if anim.reactive else ""))
         self.update_readout()
         self.refresh_light()
 
@@ -1199,6 +1226,7 @@ class AulaWindow(Gtk.Window):
                 return
             self.live_anim = L.ANIMATION_BY_NAME[self.anim_name]
             self.live_tick = time.monotonic()
+            self.live_presses = []
             self.say(f"Playing {self.live_anim.name} on the keyboard")
         else:
             self.live_anim = None

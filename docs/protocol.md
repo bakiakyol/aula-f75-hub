@@ -54,7 +54,23 @@ NKRO report id 4) and only sends a command once all keys are up and the keyboard
 been idle for 0.4 s.
 
 The boot interface also sends three `00 00 01 00…` (ErrorRollOver) reports after
-every key release. This is a firmware quirk and harmless.
+every key release. This is a firmware quirk and harmless, but usages 1-3 must not
+be taken for keys.
+
+### Key reports (read for the key-reacting animations)
+
+From the report descriptors (2.4G dongle):
+
+- Boot interface, no report id, 8 bytes: `[modifier bits, 0, key x5, vendor]`.
+  Modifier bit n is usage `0xE0 + n` (left Ctrl first).
+- Report 4 on the configuration node: NKRO bitmap, 160 bits, bit n = usage n
+  (0x00-0x9F). Modifiers are not in it; they only come in the boot report.
+- Bluetooth: keyboard report id 1 (`[1, mods, 0, key x5, vendor]`), NKRO id 2.
+
+A key can show up in both reports at once, so `KeyTracker` (aula/backends/base.py)
+counts a press when a usage becomes held in the union of all reports. Fn sends no
+report. The usage is mapped back to the key that sends it by default
+(`keymap.USAGE_INDEX`).
 
 ## Commands
 
@@ -151,6 +167,25 @@ Timing, found by watching the board:
   therefore keeps every key in the same group (bands along the animation's
   direction) and only changes the groups' colors.
 - Typing while frames stream works normally (no dropped key releases seen).
+- **A frame is only shown once all its packets came** (tested: blue frames with
+  packet 1 never sent left the board red). Packets are placed by index, so after a
+  lost packet the next frame's packet fills the gap and the keyboard shows a mix of
+  two frames. With different layouts that reads bytes in the wrong place: while
+  typing fast, keys lit up in colors never sent. `live.layered()` avoids this for the
+  key-reacting animations (see below).
+- **A later group overrides an earlier one** for the same key (tested).
+- **Each packet is read as 14 bytes**, whatever its length field says: shorter
+  payloads padded with zeros were misread (tested).
+- **A key index without a LED (the knob, 84) stops the frame** there; the keys
+  after it stay dark (tested). Don't use it as filler.
+
+Frames that survive a lost packet (`live.layered()`): the resting board first,
+byte for byte the same in every frame and ending on a packet boundary; then the lit
+keys in packets that are each exactly 14 bytes of whole groups (one group of 10
+keys, or two groups of 6 keys between them; gaps are filled with groups that
+restate keys in the color they already show); the same number of packets in
+every frame. Any mix of two frames' packets then reads as valid groups. Costs
+12-13 packets a frame (about 11 frames/s).
 
 ## Keymap entry (4 bytes)
 

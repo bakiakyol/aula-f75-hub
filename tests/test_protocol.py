@@ -1,6 +1,7 @@
 """Packet tests: expected values were captured from real keyboard traffic."""
 
 import os
+import sys
 import unittest
 
 from aula import keymap as K
@@ -112,6 +113,75 @@ class KeyReportTests(unittest.TestCase):
         self.assertFalse(_keys_down(bytes([1] + [0] * 8), True))
         self.assertTrue(_keys_down(bytes([2, 0, 0, 0, 0, 0, 1] + [0] * 14), True))
         self.assertIsNone(_keys_down(bytes([4, 1]), True))  # system control, not keys
+
+
+class KeyPressTests(unittest.TestCase):
+    def test_reports_to_usages(self):
+        from aula.backends.base import keys_in_report
+        self.assertEqual(keys_in_report(bytes([0x02, 0, 0x04, 0x28, 0, 0, 0, 0])), {0xE1, 0x04, 0x28})  # shift a enter
+        self.assertEqual(keys_in_report(bytes([0, 0, 1, 0, 0, 0, 0, 0])), frozenset())  # ErrorRollOver: no key
+        nkro = bytearray(21)
+        nkro[0], nkro[1 + 0x28 // 8] = 4, 1 << (0x28 % 8)
+        self.assertEqual(keys_in_report(bytes(nkro)), {0x28})
+        self.assertEqual(keys_in_report(bytes([1, 0x01, 0, 0x2C, 0, 0, 0, 0, 0]), True), {0xE0, 0x2C})
+        self.assertIsNone(keys_in_report(bytes([0x13] + [0] * 19)))
+
+    def test_tracker(self):
+        from aula.backends.base import KeyTracker
+        tr = KeyTracker()
+        tr.feed("boot", frozenset({0x04}))
+        tr.feed("nkro", frozenset({0x04, 0x05}))       # same key on two reports counts once
+        self.assertEqual(tr.take_presses(), [0x04, 0x05])
+        self.assertEqual(tr.take_presses(), [])
+        tr.feed("boot", frozenset())
+        self.assertEqual(tr.take_presses(), [])        # 'a' still held on NKRO
+        tr.feed("nkro", frozenset())
+        tr.feed("nkro", frozenset({0x04}))
+        self.assertEqual(tr.take_presses(), [0x04])     # pressed again
+
+    def test_key_presses(self):
+        from aula.backends.base import KeyGuard
+        from aula.device import Keyboard
+
+        class Guard(KeyGuard):
+            def presses(self):
+                return [0x04, 0xE0, 0x68]               # a, left ctrl, F13 (not on the F75)
+
+        kb = Keyboard.__new__(Keyboard)                 # no device opened
+        kb._guard = Guard()
+        self.assertEqual(kb.key_presses(), [K.key_index("a"), K.key_index("lctrl")])
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux backend")
+    def test_linux_guard_reads_presses(self):
+        """The guard's read loop, with sockets standing in for the hidraw nodes
+        (one report per read, like hidraw)."""
+        import socket
+        import time
+
+        from aula.backends.base import KeyTracker
+        from aula.backends.linux import LinuxKeyGuard
+        boot_out, boot_in = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        nkro_out, nkro_in = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        guard = LinuxKeyGuard.__new__(LinuxKeyGuard)            # no device opened
+        guard.bluetooth, guard._tracker, guard._last_key_event = False, KeyTracker(), time.monotonic()
+        guard._key_fds = [boot_in.fileno(), nkro_in.fileno()]
+        for sock in (boot_in, nkro_in):
+            sock.setblocking(False)
+        nkro = bytearray(21)
+        nkro[0], nkro[1 + 0x28 // 8] = 4, 1 << (0x28 % 8)
+        boot_out.send(bytes([0x02, 0, 0x04, 0, 0, 0, 0, 0]))     # shift + a
+        nkro_out.send(bytes(nkro))                                 # enter, on the NKRO report
+        boot_out.send(bytes(8))                                    # all up
+        boot_out.send(bytes([0, 0, 1, 0, 0, 0, 0, 0]))             # ErrorRollOver: no new key
+        time.sleep(0.05)
+        self.assertEqual(guard.presses(), [0x04, 0xE1, 0x28])
+        self.assertEqual(guard.presses(), [])
+        for sock in (boot_out, boot_in, nkro_out, nkro_in):
+            sock.close()
+
+    def test_every_key_but_fn_has_a_usage(self):
+        lit = {idx for idx, _n, _l, r in K.KEYS if r != (0, 0, 0, 0)}
+        self.assertEqual(lit - set(K.USAGE_INDEX.values()), {K.key_index("fn")})
 
 
 class MacroTests(unittest.TestCase):
@@ -292,9 +362,15 @@ class LiveTests(unittest.TestCase):
         for anim in L.ANIMATIONS:
             for preset in (T.PRESETS if anim.uses_theme else T.PRESETS[:1]):
                 for i in range(12):
-                    colors = anim.frame(preset, i * 0.37)
-                    frame = L.frame(anim, preset, i * 0.37)
-                    self.assertLessEqual(len(frame), L.BUDGET, (anim.name, preset.name))
+                    t = 3 + i * 0.37
+                    presses = L.demo_presses(t)
+                    colors = anim.frame(preset, t, presses)
+                    frame = L.frame(anim, preset, t, presses)
+                    if anim.reactive:                    # full packets, see test_mixed_packets
+                        self.assertEqual(len(frame) % P.CHUNK, 0, (anim.name, preset.name))
+                        self.assertLessEqual(len(frame), P.LIVE_MAX, (anim.name, preset.name))
+                    else:
+                        self.assertLessEqual(len(frame), L.BUDGET, (anim.name, preset.name))
                     self.assertEqual(set(P.colors_from_live(frame)), {k for k, c in colors.items() if any(c)})
 
     def test_groups_stay_put(self):
@@ -330,6 +406,164 @@ class LiveTests(unittest.TestCase):
         merged = P.median_cut(groups, 10)
         self.assertLessEqual(len(merged), 10)
         self.assertEqual(sorted(i for ks in merged.values() for i in ks), list(range(60)))
+
+
+class ReactiveTests(unittest.TestCase):
+    """Animations that light up the keys you press."""
+
+    @classmethod
+    def setUpClass(cls):
+        from aula import live as L
+        from aula import presets as T
+        cls.L, cls.theme = L, T.PRESET_BY_NAME["ocean"]
+
+    def shown(self, name, t, presses):
+        L = self.L
+        return P.colors_from_live(L.frame(L.ANIMATION_BY_NAME[name], self.theme, t, presses))
+
+    def resting(self):
+        return self.shown("ripple", 5.0, [])
+
+    def test_quiet_without_presses(self):
+        for name in ("ripple", "afterglow", "heatmap"):
+            self.assertEqual(self.shown(name, 5.0, []), self.resting(), name)
+
+    def test_ripple_travels(self):
+        g, far = K.key_index("g"), K.key_index("enter")      # Enter is about 7.6 keys from G
+        rest = self.resting()
+        press = [(g, 1.0)]
+        early, later = self.shown("ripple", 1.05, press), self.shown("ripple", 2.1, press)
+        self.assertGreater(sum(early[g]), sum(rest[g]))      # starts at the key
+        self.assertEqual(early[far], rest[far])
+        self.assertGreater(sum(later[far]), sum(rest[far]))  # and reaches Enter later
+        self.assertEqual(self.shown("ripple", 2.6, press), rest)   # then it is gone
+
+    def test_afterglow_fades(self):
+        h = K.key_index("h")                                  # not an accent key of the theme
+        press = [(h, 1.0)]
+        glow = [sum(self.shown("afterglow", 1.0 + dt, press)[h]) for dt in (0.05, 0.8, 1.6)]
+        self.assertGreater(glow[0], glow[1])
+        self.assertGreater(glow[1], glow[2])
+        self.assertGreater(glow[2], sum(self.resting()[h]))
+        self.assertEqual(self.shown("afterglow", 4.5, press), self.resting())
+
+    def test_heatmap_warms_up(self):
+        e, r = K.key_index("e"), K.key_index("r")
+        once = self.shown("heatmap", 2.0, [(e, 1.0)])
+        often = self.shown("heatmap", 2.0, [(e, 1.0), (e, 1.2), (e, 1.4), (e, 1.6)])
+        self.assertGreater(sum(once[e]), sum(self.resting()[e]))
+        self.assertGreater(sum(often[e]), sum(once[e]))      # hotter = the theme's brighter tone
+        self.assertNotEqual(often[r], self.resting()[r])     # the heat spreads to the neighbours
+
+    def test_resting_keys_keep_their_groups(self):
+        """Typing must not move the keys that aren't lit between groups (that flickers)."""
+        L = self.L
+        anim = L.ANIMATION_BY_NAME["ripple"]
+
+        def partners(t):
+            frame, groups, i = L.frame(anim, self.theme, t, L.demo_presses(t)), {}, 0
+            while i < len(frame):
+                keys = frozenset(frame[i + 4:i + 4 + frame[i + 3]])
+                for k in keys:
+                    groups[k] = keys
+                i += 4 + frame[i + 3]
+            return groups
+
+        quiet = partners(0.0)                                 # no key pressed yet: all resting
+        busy = partners(6.0)
+        lit = {k for k, ks in busy.items() if ks not in quiet.values()}
+        for k, ks in busy.items():
+            if k not in lit:
+                self.assertEqual(ks - lit, quiet[k] - lit, k)
+
+    def test_resting_keys_never_change(self):
+        """Keys that aren't lit look exactly as at rest, whatever is lit elsewhere
+        (any change there shows as flicker). (A lit key may rest when too many are
+        lit for one frame: the faintest give way.)"""
+        from aula import presets as T
+        L = self.L
+        for name in ("ripple", "afterglow", "heatmap"):
+            anim = L.ANIMATION_BY_NAME[name]
+            for preset in (T.PRESET_BY_NAME[n] for n in ("ocean", "synthwave", "dracula")):
+                rest = P.colors_from_live(L.frame(anim, preset, 0.0, []))
+                for i in range(10):
+                    t = 3 + i * 0.29
+                    presses = L.demo_presses(t)
+                    colors = anim.frame(preset, t, presses)
+                    shown = P.colors_from_live(L.frame(anim, preset, t, presses))
+                    for k, c in colors.items():
+                        if c == L._resting(preset)[k]:
+                            self.assertEqual(shown[k], rest[k], (name, preset.name, t, k))
+
+    def test_mixed_packets(self):
+        """After a lost packet the keyboard fills the gap from the next frame. Any mix
+        of two frames' packets must still read as valid groups showing colors that
+        one of the frames really has (a misread showed keys yellow in ocean)."""
+        import random
+        from aula import presets as T
+        L, rng = self.L, random.Random(5)
+        valid = {idx for idx, *_ in K.KEYS} - {K.BY_NAME["knob"]}
+        for name in ("ripple", "afterglow", "heatmap"):
+            anim = L.ANIMATION_BY_NAME[name]
+            for preset in (T.PRESET_BY_NAME[n] for n in ("ocean", "synthwave", "dracula")):
+                for i in range(12):
+                    t = 3 + i * 0.37
+                    a = L.frame(anim, preset, t, L.demo_presses(t))
+                    b = L.frame(anim, preset, t + 0.09, L.demo_presses(t + 0.09))
+                    self.assertEqual(len(a), len(b))      # the same packet count every frame
+                    colors = set()                        # every group color either frame sends
+                    for frame in (a, b):
+                        j = 0
+                        while j < len(frame):
+                            colors.add(tuple(frame[j:j + 3]))
+                            j += 4 + frame[j + 3]
+                    pa = [a[n:n + P.CHUNK] for n in range(0, len(a), P.CHUNK)]
+                    pb = [b[n:n + P.CHUNK] for n in range(0, len(b), P.CHUNK)]
+                    mixed = b"".join(rng.choice(pair) for pair in zip(pa, pb))
+                    j = 0
+                    while j < len(mixed):                 # strict read: whole groups, real keys
+                        count = mixed[j + 3]
+                        self.assertGreater(count, 0)
+                        self.assertLessEqual(j + 4 + count, len(mixed))
+                        self.assertTrue(set(mixed[j + 4:j + 4 + count]) <= valid)
+                        self.assertIn(tuple(mixed[j:j + 3]), colors)
+                        j += 4 + count
+                    self.assertEqual(set(P.colors_from_live(mixed)), set(P.colors_from_live(a)))
+
+    def test_demo_typing(self):
+        L = self.L
+        presses = L.demo_presses(10.0)
+        self.assertEqual(presses, L.demo_presses(10.0))      # the same every time
+        self.assertEqual([at for _, at in presses], sorted(at for _, at in presses))
+        self.assertTrue(all(at <= 10.0 for _, at in presses))
+        self.assertEqual(L.demo_presses(10.0)[:-3], L.demo_presses(10.9)[:len(presses) - 3])
+
+    def test_animate_command(self):
+        """`aula animate ripple` with a stand-in keyboard: key presses come back lit."""
+        import argparse
+        import contextlib
+        import io
+
+        from aula import cli
+        g = K.key_index("g")
+
+        class FakeKeyboard:
+            def __init__(self):
+                self.frames, self.calls = [], 0
+
+            def key_presses(self):
+                self.calls += 1
+                return [g] if self.calls == 3 else []        # the 1st call drops old presses
+
+            def send_live(self, frame):
+                self.frames.append(P.colors_from_live(frame))
+
+        kb = FakeKeyboard()
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli.cmd_animate(kb, argparse.Namespace(name="ripple", theme="ocean", speed=1.0, seconds=0.3))
+        rest = self.resting()
+        self.assertEqual(kb.frames[0], rest)                  # nothing pressed yet
+        self.assertTrue(any(f[g] != rest[g] for f in kb.frames[1:]))
 
 
 class MatrixTests(unittest.TestCase):
