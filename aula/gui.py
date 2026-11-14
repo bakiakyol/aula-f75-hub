@@ -977,8 +977,11 @@ class AulaWindow(Gtk.Window):
         self._show_anim_choice()
 
         def job(kb):
+            # over the cable the macro store can't be read yet: show no macros then
+            macros = (M.parse_store(kb.get_macro_store())
+                      if kb.can_read(P.CMD_SET_MACRO) else None)
             return (kb.mode, kb.get_led(), kb.get_custom(), kb.get_battery(),
-                    M.parse_store(kb.get_macro_store()), kb.get_palette())
+                    macros, kb.get_palette())
 
         self.worker.submit(job, self.loaded)
 
@@ -987,14 +990,15 @@ class AulaWindow(Gtk.Window):
         self.connection = "ready"
         self.led = led
         self.palette = palette
-        self.fill_macros(macros)
+        self.fill_macros(macros or [])
         self.view.colors = P.colors_from_custom(custom)
         self.view.queue_draw()
         bat = f" · Battery {battery}%" if battery is not None else ""
         self.header.set_subtitle(f"{mode}{bat}")
         self.fill_widgets()
         self._show_anim_choice()
-        self.say("Ready")
+        self.say("Ready" if macros is not None else
+                 "Ready · macros can't be read over the cable yet")
 
     def fill_widgets(self):
         led = self.led
@@ -1022,7 +1026,8 @@ class AulaWindow(Gtk.Window):
         self.os_combo.set_active_id(str(led.os_mode))
         self.winlock.set_active(led.win_lock)
         self.sleep_combo.remove_all()
-        for sec in sorted({*P.SLEEP_CHOICES, led.sleep} - {0}) + [0]:
+        # "never" is refused (aula/device.py); it's only listed to show a keyboard set to it
+        for sec in sorted({*P.SLEEP_CHOICES, led.sleep} - {0}) + ([0] if led.sleep == 0 else []):
             self.sleep_combo.append(str(sec), P.sleep_text(sec))
         self.sleep_combo.set_active_id(str(led.sleep))
         self.updating = False

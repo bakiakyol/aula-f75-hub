@@ -231,3 +231,31 @@ Bluetooth) and of the OS mode (W or E) in white, on top of the running effect.
 
 - Wired transport (`CDevG5KB::AccessData`, around `0x48b350`).
 - Real-time lighting over Bluetooth, and while a firmware effect other than custom is active.
+
+## Wired (USB cable)
+
+With the switch on wired the keyboard is `258a:010c`. Its configuration channel is
+the HID collection whose descriptor declares feature report `0x06` with 519 data
+bytes (520 with the id). Every exchange is one 520-byte feature report:
+
+`[0] 06  [1] command  [2] sub (layer)  [3] 0  [4] total  [5] index  [6..8] length (LE)  [8..] data`
+
+A read sends the request with set-feature, waits ~20 ms and fetches the reply with
+get-feature; the reply echoes the header. Commands used here (all verified on a
+real keyboard):
+
+| Table | Read | Write | Length | Notes |
+|---|---|---|---|---|
+| Lighting block | `0x84` | `0x04` | 128 | ends in `5a a5`; byte 14 is 00 here, 01 over the dongle |
+| Keymap | `0x83` (sub = layer) | – | 504 of a 512-byte page | write not used |
+| Effect palettes | `0x8a` | `0x0a` | 490 of a 512-byte page | `5a a5` at 506, then `00 10 00 00` |
+| Per-key colors | `0x86` | `0x06` | 378 (R×126, G×126, B×126) | shown with effect 32 |
+
+Writes aren't acknowledged; each is checked by reading it back after ~0.4 s.
+After a palette or per-key write the unchanged lighting block is sent once more,
+as the official app does. About a second after a write the keyboard sends an
+8-byte input report `06 0a 07 00 …` on the same collection (meaning unknown).
+`0x88`, `0x8b`, `0x8e`, `0x91` return firmware code and are never sent; wired
+`0x06` is not the wireless factory reset. Sources: lumen75, aula-studio, F75 Studio,
+keylux (see README).
+

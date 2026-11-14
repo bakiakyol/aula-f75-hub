@@ -57,7 +57,7 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
 
 | Platform | Durum | Rehber |
 |---|---|---|
-| **Linux** | ✅ **Kararlı.** Bütün özellikler gerçek klavyede, 2.4G dongle ve Bluetooth üzerinden doğrulandı | [Kurulum](#kurulum) |
+| **Linux** | ✅ **Kararlı.** Gerçek klavyede doğrulandı. Ayarlar USB kablosuyla yazılır; 2.4G dongle ve Bluetooth okuma, yedek ve (dongle'da) animasyon içindir | [Kurulum](#kurulum) |
 | **macOS** | 🧪 **Test ediliyor**, [`port-macos`](https://github.com/bakiakyol/aula-f75-hub/tree/port-macos) dalında. **2.4G dongle:** macOS 27'de (Apple silicon) 21 kontrolün 19'u geçti, arayüz dahil. **Bluetooth:** ayarlar okunamıyor, çünkü macOS klavyenin her cevabının bir kısmını kaybediyor; ayarlar için dongle kullan (Bluetooth'la yazmak normal çalışır). **Bilinen sorun:** klavye Mac modundayken (Fn+E) Fn katmanındaki makrolar çalışmıyor; inceleniyor | [docs/macos.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-macos/docs/macos.md) |
 | **Windows** | 🧪 **Teste hazır**, [`port-windows`](https://github.com/bakiakyol/aula-f75-hub/tree/port-windows) dalında. Windows'ta otomatik testleri geçiyor, henüz gerçek klavyede denenmedi | [docs/windows.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-windows/docs/windows.md) |
 
@@ -68,14 +68,24 @@ zamana kadar kendi dalındaki rehberi izle. Birini denedin mi?
 ## Desteklenen donanım
 
 Bağlantı türü klavyenin arkasındaki anahtarla seçiliyor (2.4G / kablo / Bluetooth).
-Araç hangisi aktifse onu kendisi buluyor.
+Araç hangisi aktifse onu kendisi buluyor; kablo takılı ve anahtar kabloluda ise
+kabloyu kullanıyor.
 
-| Klavye | Bağlantı | Durum |
-|---|---|---|
-| AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ Doğrulandı |
-| AULA F75 | Bluetooth (`3554:fa07`) | ✅ Doğrulandı |
-| AULA F75 | Kablo (`258a:010c`) | ❌ Henüz desteklenmiyor (farklı iletim katmanı) |
-| Diğer AULA modelleri | – | ❓ Bilinmiyor. Lütfen [bildir](../../issues/new/choose) |
+**Ayarlar sadece USB kablosuyla yazılır** (anahtar kabloluda). Resmi uygulama ve
+diğer açık kaynak F75 araçları da böyle yapıyor. Kablosuzda paketler kayboluyor ve
+kablosuzdan yazmanın başka bir F75'i, firmware yeniden yüklenene kadar tuş
+gönderemez hale getirdiği biliniyor. Okuma, yedek ve canlı animasyonlar kablosuzda
+çalışmaya devam ediyor.
+
+| Klavye | Bağlantı | Okuma | Yazma |
+|---|---|---|---|
+| AULA F75 | Kablo (`258a:010c`) | ✅ ışık, paletler, tuş renkleri, tuş haritası (makrolar henüz değil) | ✅ ışık bloğu, efekt renkleri, tuş renkleri |
+| AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ hepsi | ❌ bilerek kapalı; ✅ canlı animasyon |
+| AULA F75 | Bluetooth (`3554:fa07`) | ✅ hepsi (yavaş) | ❌ bilerek kapalı |
+| Diğer AULA modelleri | – | ❓ Bilinmiyor. Lütfen [bildir](../../issues/new/choose) | |
+
+Tuş atama ve makrolar şimdilik yazılamıyor: kablolu komutları henüz doğrulanmadı,
+kablosuzdan da artık yazılmıyorlar.
 
 ## Kurulum
 
@@ -103,6 +113,8 @@ karşılıklarını) kur. Komut satırı aracı için Python 3.10+ dışında bi
 aula gui
 ```
 
+Ayar değiştirmek için anahtarı **kabloluya** al ve kabloyu tak.
+
 Bir tuşa tıklayıp seç (**Ctrl+tık** ile birden fazla), sonra klavyenin altından bir
 renk seç. Lighting sayfasında **Color** satırındaki renk düğmesi çalışan efekte
 istediğin rengi verir, **Factory colors** bunu geri alır. Soldaki sayfalardan efekti değiştirebilir, tuş atayabilir, yan göstergeyi,
@@ -128,7 +140,7 @@ aula side-light breathing                  # off | fill | breathing | static
 aula knob lighting                         # media | lighting
 aula os mac                                # windows | android | mac
 aula win-lock on
-aula sleep 10m                             # 10 dk boşta kalınca uyu (30 sn adımlarla 20m'ye kadar, ya da off)
+aula sleep 10m                             # 10 dk boşta kalınca uyu (30 sn adımlarla 20m'ye kadar; "asla" reddedilir)
 aula backup ~/aula-yedek
 aula restore ~/aula-yedek
 ```
@@ -195,8 +207,9 @@ aula animate fire --speed 1.5 --seconds 60
 
 Sadece arayüz (ya da `aula animate`) açıkken çalışırlar. Durduktan yaklaşık 2 saniye
 sonra klavye kendi efektine döner. Klavyeye hiçbir şey kaydedilmediği için hafızasını
-yıpratmazlar, bu sırada yazı yazmak da normal çalışır. 2.4G alıcıyla denendi,
-Bluetooth henüz denenmedi.
+yıpratmazlar, bu sırada yazı yazmak da normal çalışır. Sadece 2.4G dongle'da
+çalışırlar (Bluetooth'ta değil, kabloda henüz değil), saniyede en fazla 20 kare:
+daha hızlısı klavyenin tuş taramasını aksatıyor.
 
 ### Makrolar
 
@@ -331,8 +344,12 @@ bütün efekt numaraları klavyede tek tek denenerek çıkarıldı.
 - `backup/` klasöründe, fabrika ayarlarındaki bir F75'ten bu araç hiçbir şey
   yazmadan önce okunmuş ayarlar duruyor. `aula restore backup` bunları klavyene yükler.
 - **Fn + Esc**'ye basılı tutmak klavyeyi fabrika ayarlarına döndürür.
-- Araç sadece anlamını bildiği ayar komutlarını gönderir. Firmware'e ve bootloader'a
-  asla dokunmaz.
+- Araç sadece anlamını bildiği ayar komutlarını gönderir. Gerisi (sıfırlama,
+  firmware, bootloader) klavyeye ulaşmadan reddedilir.
+- Ayarlar sadece USB kablosuyla yazılır. Her yazma önce bloğu kablodan okur, sadece
+  anlamı bilinen baytları değiştirebilir ve sonra geri okunur; klavye birebir
+  saklamadıysa hata verir.
+- Uyku "asla" reddedilir: hiç uyumayan klavye ışıklar açıkken pilini bitirir.
 
 ## Sorun giderme
 
@@ -341,25 +358,42 @@ bütün efekt numaraları klavyede tek tek denenerek çıkarıldı.
 | `permission denied` | `./install.sh`'i çalıştır ya da `udev/` içindeki kuralı elle kur |
 | `the keyboard didn't answer` | Klavye uyuyor. Bir tuşa bas ve tekrar dene (ne kadar sürede uyuyacağını `aula sleep` ayarlar) |
 | `a key seems to be held down` | Klavyeden elini çek. Araç klavyeyle konuşmadan önce bütün tuşların bırakılmasını bekliyor, yoksa kaybolan bir "tuş bırakıldı" sinyali bir tuşun sonsuza kadar tekrar etmesine yol açabiliyor |
-| `connected by cable` | 2.4G dongle ya da Bluetooth kullan, kablolu mod henüz desteklenmiyor |
+| `Settings are only written over the USB cable` | Anahtarı kabloluya al ve kabloyu tak |
+| `would change LED bytes […] whose meaning is unknown` | Yazmaya çalıştığın blok klavyedekiyle uyuşmuyor (örneğin başka bağlantıdan okunmuş). Kablodan tekrar oku, sadece gerekeni değiştir |
 
 ## Nasıl çalışıyor?
 
-Klavye üreticiye özel bir HID kanalını dinliyor (rapor `0x13`, 8 bitlik checksum'lı
-20 baytlık paketler) ve her yazmayı aynen geri göndererek onaylıyor. Ayarlar birkaç
+Kablosuzda klavye üreticiye özel bir HID kanalını dinliyor (rapor `0x13`, 8 bitlik
+checksum'lı 20 baytlık paketler). Kabloda 520 baytlık feature raporları kullanıyor
+(id `0x06`); her kablolu yazma geri okunarak doğrulanıyor. Ayarlar birkaç
 blokta tutuluyor: 128 baytlık ışık bloğu, katman başına 504 baytlık tuş haritası ve
 378 baytlık tuş başı renk tablosu. Ayrıntılar (İngilizce):
 [docs/protocol.md](docs/protocol.md).
 
 ## Yol haritası
 
-- [ ] Kablolu mod (aynı veri, farklı iletim katmanı)
+- [x] Kablolu mod: okuma; ışık, efekt renkleri ve tuş renklerini yazma
+- [ ] Kabloda tuş haritası ve makro yazma
 - [x] Bluetooth
 - [ ] macOS (test ediliyor)
 - [ ] Windows (teste hazır)
 - [x] Makrolar
 - [x] GUI'de klavyeden makro kaydetme
 - [x] Daha fazla tema
+
+## Teşekkürler
+
+Kablolu protokol şu açık kaynak projelerden öğrenildi (kod kopyalanmadı):
+
+- [whiskey00/lumen75](https://github.com/whiskey00/lumen75) (MIT): kablolu feature
+  rapor çerçevesi; tuş haritası, ışık ve palet okumaları.
+- [Dahuum/aula-studio](https://github.com/Dahuum/aula-studio) (MIT): palet (`0x0a`)
+  ve tuş renk (`0x06`/`0x86`) komutları ve resmi yazma sırası.
+- [trenbolone1122/aula-f75-linux](https://github.com/trenbolone1122/aula-f75-linux)
+  (F75 Studio): kablolu tuş renk sırası.
+- [SibteProf/keylux](https://github.com/SibteProf/keylux) (Apache-2.0): güvenlik
+  kuralları: komut taraması yok, geri okumadığın bloğu yazma, kablosuzdan ayar
+  yazma yok, saniyede en fazla ~20 kare.
 
 ## Katkı
 

@@ -4,6 +4,7 @@ No extra libraries: plain os.read/os.write on the hidraw node, device info
 from /sys. Access requires the udev rule in udev/70-aula-f75.rules.
 """
 
+import fcntl
 import glob
 import os
 import select
@@ -11,8 +12,9 @@ import subprocess
 import time
 
 from ..errors import AulaError
-from .base import (PRODUCT_WIRED, PRODUCTS, VENDOR_WIRED, VENDOR_WIRELESS, Channel, KeyGuard,
-                   NoKeyGuard)
+from ..protocol import WIRED_REPORT_ID
+from .base import (PRODUCT_WIRED, PRODUCTS, VENDOR_WIRED, VENDOR_WIRELESS, Channel,
+                   FeatureChannel, KeyGuard, NoKeyGuard)
 
 # Report descriptor fragment: Usage Page 0xFF02, Usage 2, Collection, Report ID 0x13
 _VENDOR_CHANNEL = bytes([0x06, 0x02, 0xFF, 0x09, 0x02, 0xA1, 0x01, 0x85, 0x13])
@@ -38,6 +40,24 @@ def _sibling_nodes(path: str) -> list[str]:
         for d in sorted(glob.glob("/sys/class/hidraw/hidraw*"))
         if want and _uevent(f"{d}/device/uevent").get("HID_ID") == want
     ]
+
+
+def _has_feature_report(desc: bytes, report_id: int) -> bool:
+    """Does the report descriptor declare a Feature report with this id?"""
+    i, current = 0, 0
+    while i < len(desc):
+        prefix = desc[i]
+        if prefix == 0xFE:  # long item: skip it
+            i += 3 + (desc[i + 1] if i + 1 < len(desc) else 0)
+            continue
+        size = (0, 1, 2, 4)[prefix & 0x03]
+        value = int.from_bytes(desc[i + 1:i + 1 + size], "little")
+        if prefix & 0xFC == 0x84:  # Global: Report ID
+            current = value
+        elif prefix & 0xFC == 0xB0 and current == report_id:  # Main: Feature
+            return True
+        i += 1 + size
+    return False
 
 
 def _keys_down(report: bytes, bluetooth: bool = False) -> bool | None:
@@ -75,8 +95,15 @@ def find_devices() -> list[dict]:
             continue
         node = "/dev/" + os.path.basename(sys_dir)
         if vid == VENDOR_WIRED and pid == PRODUCT_WIRED:
-            found.append({"path": node, "mode": "wired", "supported": False,
-                          "name": ev.get("HID_NAME", "")})
+            # several nodes; the one with feature report 0x06 is the configuration channel
+            try:
+                with open(f"{sys_dir}/device/report_descriptor", "rb") as f:
+                    desc = f.read()
+            except OSError:
+                continue
+            if _has_feature_report(desc, WIRED_REPORT_ID):
+                found.append({"path": node, "mode": "wired", "supported": True,
+                              "name": ev.get("HID_NAME", "")})
             continue
         if vid != VENDOR_WIRELESS or pid not in PRODUCTS:
             continue
@@ -115,17 +142,49 @@ class LinuxChannel(Channel):
         os.close(self.fd)
 
 
+def _hidioc(nr: int, length: int) -> int:
+    """HIDIOCSFEATURE (nr 6) / HIDIOCGFEATURE (nr 7) from linux/hidraw.h."""
+    return (3 << 30) | (length << 16) | (ord("H") << 8) | nr
+
+
+class LinuxFeatureChannel(FeatureChannel):
+    """The wired configuration channel: feature reports through hidraw ioctls."""
+
+    def __init__(self, path: str):
+        try:
+            self.fd = os.open(path, os.O_RDWR)
+        except PermissionError:
+            raise AulaError(f"cannot open {path}: permission denied. "
+                            "Is the udev rule installed? (see README)") from None
+
+    def set_feature(self, report: bytes) -> None:
+        fcntl.ioctl(self.fd, _hidioc(6, len(report)), bytearray(report))
+
+    def get_feature(self, report_id: int, length: int) -> bytes:
+        buf = bytearray(length)
+        buf[0] = report_id
+        n = fcntl.ioctl(self.fd, _hidioc(7, length), buf, True)
+        return bytes(buf[:n]) if n and n > 0 else bytes(buf)
+
+    def close(self) -> None:
+        os.close(self.fd)
+
+
 class LinuxKeyGuard(KeyGuard):
     """Watches the keyboard's normal key reports on its other hidraw nodes."""
 
     def __init__(self, path: str, bluetooth: bool):
         self.bluetooth = bluetooth
         self._key_fds = []
+        self._config_fd = None
         for node in _sibling_nodes(path):
             try:
-                self._key_fds.append(os.open(node, os.O_RDONLY | os.O_NONBLOCK))
+                fd = os.open(node, os.O_RDONLY | os.O_NONBLOCK)
             except OSError:
-                pass
+                continue
+            self._key_fds.append(fd)
+            if node == path:
+                self._config_fd = fd
         self._held: dict[int, bool] = {}
         self._last_key_event = time.monotonic()
 
@@ -138,9 +197,14 @@ class LinuxKeyGuard(KeyGuard):
         while True:
             for fd in select.select(self._key_fds, [], [], 0.05)[0]:
                 try:
-                    state = _keys_down(os.read(fd, 64), self.bluetooth)
+                    report = os.read(fd, 64)
                 except BlockingIOError:
                     continue
+                if fd == self._config_fd and report[:1] == bytes([WIRED_REPORT_ID]):
+                    # wired mode: the keyboard's own notice on the configuration
+                    # collection (e.g. 06 0a 07 … after a write), not a key report
+                    continue
+                state = _keys_down(report, self.bluetooth)
                 if state is not None:
                     self._held[fd] = state
                     self._last_key_event = time.monotonic()
@@ -155,8 +219,8 @@ class LinuxKeyGuard(KeyGuard):
             os.close(fd)
 
 
-def open_device(path: str, mode: str) -> tuple[Channel, KeyGuard]:
-    channel = LinuxChannel(path)
+def open_device(path: str, mode: str) -> tuple[Channel | FeatureChannel, KeyGuard]:
+    channel = LinuxFeatureChannel(path) if mode == "wired" else LinuxChannel(path)
     try:
         guard = LinuxKeyGuard(path, mode == "Bluetooth")
     except OSError:

@@ -377,6 +377,9 @@ BACKUP = [  # (file, read function, write function)
 def cmd_backup(kb: Keyboard, a) -> None:
     os.makedirs(a.folder, exist_ok=True)
     for fname, get, _ in BACKUP:
+        if not kb.can_read(int(fname[4:6], 16) & 0x3F):  # cmd_43.hex -> 0x03
+            print("skipped (can't be read on this connection yet):", fname)
+            continue
         with open(os.path.join(a.folder, fname), "w") as f:
             f.write(get(kb).hex())
         print("saved:", fname)

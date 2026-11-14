@@ -41,6 +41,20 @@ class Channel:
         pass
 
 
+class FeatureChannel:
+    """The wired configuration channel: 520-byte feature reports (see protocol.py)."""
+
+    def set_feature(self, report: bytes) -> None:
+        raise NotImplementedError
+
+    def get_feature(self, report_id: int, length: int) -> bytes:
+        """Fetch a feature report; the result starts with the report id."""
+        raise NotImplementedError
+
+    def close(self) -> None:
+        pass
+
+
 class KeyGuard:
     """Knows whether a key on the keyboard is held down.
 

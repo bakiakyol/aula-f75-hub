@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Settings are written over the USB cable only.** Writes over the 2.4G dongle
+  and Bluetooth were removed: radio packets get lost, and a radio write is known to
+  have left another F75 unable to type until a firmware reflash. Reading, backups
+  and live animations still work wirelessly
+- Wired mode (`258a:010c`, 520-byte feature reports, id 0x06): reads the lighting
+  block, keymaps, palettes and per-key colors; writes the lighting block (0x04),
+  effect palettes (0x0a) and per-key colors (0x06). Every write reads the block
+  over the cable first and is read back afterwards. All verified on hardware.
+  Learned from lumen75, aula-studio, F75 Studio and keylux (see README, Thanks)
+- Wired lighting writes may change only bytes whose meaning is known; a block read
+  over another connection is refused (byte 14 differs between cable and dongle)
+- Safety rules in one place (`aula/device.py`): only known commands are sent,
+  sleep "never" and damaged LED blocks are refused, live animations run at most at
+  20 frames a second, at most 200 bytes a frame, and not over Bluetooth
+- Key remapping and macros can't be written for now (no verified wired command)
+- GUI: works over the cable (macros are shown empty there); "never" left the sleep
+  menu
+- Fixed: in wired mode the keyboard's own notice after a write (`06 0a 07 …`) was
+  taken for a held key
+
 - Platform code split out into `aula/backends/` (groundwork for Windows and
   macOS); no change in behavior on Linux
 - Sleep time "never" (0) verified on hardware

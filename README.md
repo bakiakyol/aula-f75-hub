@@ -57,7 +57,7 @@ keyboard.
 
 | Platform | Status | Guide |
 |---|---|---|
-| **Linux** | ✅ **Stable.** Every feature verified on a real keyboard, over the 2.4G dongle and Bluetooth | [Installation](#installation) |
+| **Linux** | ✅ **Stable.** Verified on a real keyboard. Settings are written over the USB cable; the 2.4G dongle and Bluetooth read, back up and (dongle) play animations | [Installation](#installation) |
 | **macOS** | 🧪 **Being tested**, on the [`port-macos`](https://github.com/bakiakyol/aula-f75-hub/tree/port-macos) branch. **2.4G dongle:** 19 of 21 checks passed on macOS 27 (Apple silicon), GUI included. **Bluetooth:** settings can't be read, because macOS loses part of every reply from the keyboard; use the dongle for settings (typing over Bluetooth works as usual). **Known issue:** macros on the Fn layer don't run while the keyboard is in Mac mode (Fn+E); being looked into | [docs/macos.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-macos/docs/macos.md) |
 | **Windows** | 🧪 **Ready for testing**, on the [`port-windows`](https://github.com/bakiakyol/aula-f75-hub/tree/port-windows) branch. Passes the automated tests on Windows, not tried on a real keyboard yet | [docs/windows.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-windows/docs/windows.md) |
 
@@ -68,14 +68,23 @@ Please [tell us how it went](../../issues/new/choose).
 ## Supported hardware
 
 The connection type is chosen with the switch on the back of the keyboard
-(2.4G / wired / Bluetooth). The tool finds whichever one is active.
+(2.4G / wired / Bluetooth). The tool finds whichever one is active; with the
+cable plugged in and the switch on wired, it uses the cable.
 
-| Keyboard | Connection | Status |
-|---|---|---|
-| AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ Verified |
-| AULA F75 | Bluetooth (`3554:fa07`) | ✅ Verified |
-| AULA F75 | Cable (`258a:010c`) | ❌ Not supported yet (different transport) |
-| Other AULA models | – | ❓ Unknown. Please [report](../../issues/new/choose) |
+**Settings are only written over the USB cable** (switch on wired), like the
+official app and the other open-source F75 tools. Over the radio packets get lost,
+and a radio write is known to have left another F75 unable to type until its
+firmware was reflashed. Reading, backups and live animations still work wirelessly.
+
+| Keyboard | Connection | Read | Write |
+|---|---|---|---|
+| AULA F75 | Cable (`258a:010c`) | ✅ lighting, palettes, per-key colors, keymaps (not macros yet) | ✅ lighting block, effect colors, per-key colors |
+| AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ everything | ❌ by design; ✅ live animations |
+| AULA F75 | Bluetooth (`3554:fa07`) | ✅ everything (slow) | ❌ by design |
+| Other AULA models | – | ❓ Unknown. Please [report](../../issues/new/choose) | |
+
+Key remapping and macros can't be written for now: their wired commands aren't
+verified yet, and they are no longer written over the radio.
 
 ## Installation
 
@@ -103,6 +112,7 @@ The command-line tool needs nothing but Python 3.10+.
 aula gui
 ```
 
+Put the switch on **wired** and plug in the cable to change settings.
 Click a key to select it (**Ctrl+click** adds more), then pick a color below the
 board. On the Lighting page, the color button next to **Color** gives the running
 effect any color you like; **Factory colors** undoes it. The pages on the left change the effect, remap keys, adjust the side light,
@@ -128,7 +138,7 @@ aula side-light breathing                  # off | fill | breathing | static
 aula knob lighting                         # media | lighting
 aula os mac                                # windows | android | mac
 aula win-lock on
-aula sleep 10m                             # sleep after 10 idle minutes (30 s steps up to 20m, or off)
+aula sleep 10m                             # sleep after 10 idle minutes (30 s steps up to 20m; "never" is refused)
 aula backup ~/aula-backup
 aula restore ~/aula-backup
 ```
@@ -191,8 +201,9 @@ aula animate fire --speed 1.5 --seconds 60
 
 They run only while the GUI (or `aula animate`) is open. About 2 seconds after
 they stop, the keyboard shows its own effect again. Nothing is saved on it, so they
-don't wear out its memory, and typing works as usual meanwhile. Tested over the
-2.4G dongle; Bluetooth not yet.
+don't wear out its memory, and typing works as usual meanwhile. They run over the
+2.4G dongle only (not over Bluetooth, not over the cable yet), at most 20 frames a
+second: faster starves the keyboard's key scanning.
 
 ### Macros
 
@@ -327,8 +338,13 @@ was made by trying every effect number on the keyboard.
 - `backup/` holds the factory settings of a stock F75, read before this tool ever
   wrote to it. `aula restore backup` puts them on your keyboard.
 - Holding **Fn + Esc** factory-resets the keyboard.
-- The tool only sends configuration commands it understands. It never touches the
-  firmware or the bootloader.
+- The tool only sends configuration commands it understands. Anything else (reset,
+  firmware, bootloader) is refused before it reaches the keyboard.
+- Settings are written over the USB cable only. Every write first reads the block
+  over the cable, may change only bytes whose meaning is known, and is read back
+  afterwards; if the keyboard didn't keep it exactly, you get an error.
+- Sleep "never" is refused: a keyboard that never sleeps drains its battery with
+  the lights on.
 
 ## Troubleshooting
 
@@ -337,25 +353,42 @@ was made by trying every effect number on the keyboard.
 | `permission denied` | Run `./install.sh`, or install the udev rule from `udev/` by hand |
 | `the keyboard didn't answer` | The keyboard is asleep. Press any key and try again (`aula sleep` sets how soon it sleeps) |
 | `a key seems to be held down` | Let go of the keyboard. The tool waits for all keys to be released before it talks to the keyboard; otherwise a dropped key-release can make a key repeat forever |
-| `connected by cable` | Use the 2.4G dongle or Bluetooth; wired mode isn't supported yet |
+| `Settings are only written over the USB cable` | Put the switch on wired and plug in the cable |
+| `would change LED bytes […] whose meaning is unknown` | The block you're writing doesn't match the keyboard's (e.g. it was read over another connection). Read it again over the cable and change only what you need |
 
 ## How it works
 
-The keyboard listens on a vendor HID channel (report `0x13`, 20-byte packets with an
-8-bit checksum) and acknowledges every write by echoing it back. Settings live in a
+Wirelessly the keyboard listens on a vendor HID channel (report `0x13`, 20-byte
+packets with an 8-bit checksum). Over the cable it uses 520-byte feature reports
+(id `0x06`); every wired write is checked by reading it back. Settings live in a
 handful of blocks: a 128-byte lighting block, a 504-byte keymap per layer, and a
 378-byte per-key color table. The full write-up is in
 [docs/protocol.md](docs/protocol.md).
 
 ## Roadmap
 
-- [ ] Wired mode (same data, different transport)
+- [x] Wired mode: reading, and writing lighting, effect colors and per-key colors
+- [ ] Wired keymap and macro writes
 - [x] Bluetooth
 - [ ] macOS (being tested)
 - [ ] Windows (ready for testing)
 - [x] Macros
 - [x] Recording macros from the keyboard in the GUI
 - [x] More themes
+
+## Thanks
+
+The wired protocol was learned from these open-source projects (no code was copied):
+
+- [whiskey00/lumen75](https://github.com/whiskey00/lumen75) (MIT): the wired
+  feature-report framing and the keymap, lighting and palette reads.
+- [Dahuum/aula-studio](https://github.com/Dahuum/aula-studio) (MIT): the palette
+  (`0x0a`) and per-key color (`0x06`/`0x86`) commands and the official write order.
+- [trenbolone1122/aula-f75-linux](https://github.com/trenbolone1122/aula-f75-linux)
+  (F75 Studio): the wired per-key color sequence.
+- [SibteProf/keylux](https://github.com/SibteProf/keylux) (Apache-2.0): the safety
+  rules: no command sweeps, never write a block you haven't read back, no config
+  writes over the radio, about 20 frames a second at most.
 
 ## Contributing
 

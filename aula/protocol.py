@@ -286,6 +286,61 @@ def median_cut(groups: dict[tuple[int, int, int], list[int]], n: int) -> dict[tu
     return merged
 
 
+# ------------------------------------------------------------ wired (USB cable)
+# In wired mode (258A:010C) the keyboard is configured through 520-byte feature
+# reports, id 0x06, on their own HID collection:
+#   [0] 0x06  [1] command  [2] sub (keymap layer)  [3] 0  [4] 0x01  [5] 0
+#   [6..8] length, little-endian  [8..] data
+# A read sends the request with set-feature and fetches the reply with get-feature;
+# the reply echoes the header, then a 512-byte page that starts with the table.
+# Learned from whiskey00/lumen75 (MIT), which found these reads on hardware.
+# Only these three reads are known. 0x88, 0x8b, 0x8e and 0x91 return firmware code,
+# and other command bytes may too, so no command is ever tried on a guess.
+WIRED_REPORT_ID = 0x06
+WIRED_REPORT_LEN = 520
+WIRED_HEADER = 8
+WIRED_PAGE = 0x200
+WIRED_READS = {  # wireless read command -> (wired command, data length asked for)
+    CMD_SET_MATRIX: (0x83, WIRED_PAGE),
+    CMD_SET_LED: (0x84, LED_LEN),
+    CMD_SET_CUSTOM: (0x86, CUSTOM_LEN),  # verified by Dahuum/aula-studio (MIT)
+}
+
+
+def wired_request(cmd: int, sub: int, length: int) -> bytes:
+    head = bytes([WIRED_REPORT_ID, cmd, sub, 0, 0x01, 0]) + length.to_bytes(2, "little")
+    return head + bytes(WIRED_REPORT_LEN - WIRED_HEADER)
+
+
+WIRED_WRITE_LED = 0x04  # stores the LED block, applies at once, no ack: check by reading back
+WIRED_WRITE_PALETTE = 0x0A  # the 512-byte palette page (Dahuum/aula-studio, MIT)
+# Per-key color table: R[126] G[126] B[126], read 0x86 / write 0x06 (Dahuum/aula-studio
+# and F75 Studio). Not to be confused with 0x06 over the radio, which is a factory
+# reset: radio commands never reach the cable code and vice versa.
+WIRED_WRITE_CUSTOM = 0x06
+WIRED_PALETTE_MAGIC = 506   # 5a a5 sits here in the palette page
+WIRED_SETTLE = 0.4      # s: after a write the firmware repaints and is busy for a while
+# The only LED bytes a wired write may change: their meaning is known (see LedConfig).
+# The effect's own slot (brightness/speed/color) is added per write.
+LED_WRITABLE = {LED_EFFECT_OFFSET, LED_WIN_LOCK_OFFSET, LED_SIDE_MODE_OFFSET,
+                LED_SLEEP_OFFSET, LED_KNOB_MODE_OFFSET, LED_OS_MODE_OFFSET}
+
+
+def wired_write_report(cmd: int, sub: int, data: bytes) -> bytes:
+    if len(data) > WIRED_REPORT_LEN - WIRED_HEADER:
+        raise ValueError("too much data for one wired report")
+    req = wired_request(cmd, sub, len(data))
+    return req[:WIRED_HEADER] + data + req[WIRED_HEADER + len(data):]
+
+
+def wired_reply(report: bytes, cmd: int, sub: int, length: int) -> bytes | None:
+    """The first `length` data bytes of a reply to cmd/sub, None if it answers something else."""
+    if (len(report) >= WIRED_HEADER + length and report[0] == WIRED_REPORT_ID
+            and report[1] == cmd and report[2] == sub):
+        return bytes(report[WIRED_HEADER:WIRED_HEADER + length])
+    return None
+
+
 def live_frame(groups: dict[tuple[int, int, int], list[int]]) -> bytes:
     """{color: [index…]} -> a real-time frame for CMD_LIVE / LIVE_KEYS.
 
@@ -386,3 +441,6 @@ def set_matrix_entry(raw: bytes, index: int, entry: bytes) -> bytes:
 def key_entry(hid: int = 0, modifiers: int = 0) -> bytes:
     """Plain key entry: [0, modifier bits, 0, HID usage]."""
     return bytes([0x00, modifiers & 0xFF, 0x00, hid & 0xFF])
+
+
+WIRED_READS[CMD_SET_PALETTE] = (0x8A, WIRED_PAGE)  # after PALETTE_LEN; see WIRED_READS

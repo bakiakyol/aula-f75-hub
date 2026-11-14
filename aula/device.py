@@ -13,6 +13,25 @@ from .errors import AulaError
 
 __all__ = ["AulaError", "Keyboard", "find_devices"]
 
+# Safety rules (see docs/protocol.md, "Safety"). Every packet to the keyboard goes
+# through this class, so this is the one place they are enforced.
+#
+# Only these commands may ever be sent. Anything else (0x06 reset, 0x07, 0x0b, 0x8e,
+# firmware reads/writes...) is refused before it reaches the keyboard.
+READ_COMMANDS = {P.CMD_SET_MATRIX, P.CMD_SET_CUSTOM, P.CMD_SET_MACRO, P.CMD_SET_LED,
+                 P.CMD_SET_PALETTE, P.CMD_PROFILE}
+WRITE_COMMANDS = {P.CMD_SET_MATRIX, P.CMD_SET_CUSTOM, P.CMD_SET_MACRO, P.CMD_SET_LED,
+                  P.CMD_SET_PALETTE}
+# Settings are written over the USB cable only, like the official app and the other
+# open-source F75 tools: over the radio packets get lost, and a radio write is known
+# to have left another F75 unable to type until its firmware was reflashed.
+WIRELESS_WRITE_REFUSED = (
+    "Settings are only written over the USB cable (wired mode), never over the 2.4G "
+    "dongle or Bluetooth. Reading, backups and live animations over the dongle still work.")
+WIRED_WRITE_MISSING = ("Over the cable only the lighting/settings block can be written "
+                       "so far; this table can't be written yet.")
+LIVE_MIN_INTERVAL = 1 / 20  # s between live frames: faster starves the keyboard's key scan
+
 
 class Keyboard:
     def __init__(self, path: str | None = None, timeout: float = 1.0):
@@ -27,8 +46,12 @@ class Keyboard:
                 raise AulaError("The keyboard is connected by cable. Wired mode is not "
                                 "supported yet; use the 2.4G dongle or Bluetooth.")
             raise AulaError("AULA F75 not found (is the dongle plugged in and the keyboard on?)")
-        if len(devs) == 1:
-            self._open(devs[0]["path"], devs[0]["mode"])
+        # The cable wins: with the switch on wired the keyboard isn't on the radio,
+        # even when the dongle is still plugged in.
+        wired = [d for d in devs if d["mode"] == "wired"]
+        if wired or len(devs) == 1:
+            d = (wired or devs)[0]
+            self._open(d["path"], d["mode"])
             return
         # Several candidates (e.g. dongle plugged in while the keyboard is on Bluetooth):
         # use the one the keyboard actually answers on.
@@ -48,6 +71,7 @@ class Keyboard:
         # while a key is held (see wait_keys_released).
         self._ch, self._guard = open_device(path, mode)
         self._last_write = 0.0
+        self._last_live = 0.0
 
     def _probe(self, timeout: float = 0.6) -> bool:
         """Quick single read: does the keyboard answer on this channel?"""
@@ -95,6 +119,10 @@ class Keyboard:
         few, at random), and the keyboard always resends the whole reply. So the
         request is repeated and the parts are collected across attempts.
         """
+        if cmd not in READ_COMMANDS:
+            raise AulaError(f"refused: 0x{cmd:02x} is not a known read command")
+        if self.mode == "wired":
+            return self._wired_read(cmd, sub)
         rcmd = cmd | P.READ
         if retries is None:
             retries = 15 if self.bluetooth else 4
@@ -133,40 +161,138 @@ class Keyboard:
         missing = sorted(set(range(total)) - set(parts))
         raise AulaError(f"read 0x{rcmd:02x} incomplete, packets {missing} never arrived; try again")
 
-    def write(self, cmd: int, data: bytes, sub: int = 0, retries: int = 3) -> None:
-        """Write data in 14-byte packets; the keyboard echoes each one back as an ack."""
-        self.wait_keys_released()
-        self._drain()
-        for pkt in P.split_packets(cmd, sub, data):
-            for _ in range(retries):
-                self._ch.write(pkt)
-                if self._wait_ack(pkt):
-                    break
-            else:
-                raise AulaError(f"write 0x{cmd:02x} not acknowledged (packet {pkt[3]})")
-            time.sleep(0.015)
-        self._last_write = time.monotonic()
+    def _wired_read(self, cmd: int, sub: int = 0) -> bytes:
+        """Read a table over the cable (see P.WIRED_READS): request, then reply."""
+        if cmd not in P.WIRED_READS:
+            raise AulaError(f"0x{cmd:02x} can't be read over the cable yet")
+        wcmd, asked = P.WIRED_READS[cmd]
+        length = {P.CMD_SET_LED: P.LED_LEN, P.CMD_SET_MATRIX: P.MATRIX_BYTES,
+                  P.CMD_SET_PALETTE: P.PALETTE_LEN, P.CMD_SET_CUSTOM: P.CUSTOM_LEN}[cmd]
+        magic = P.LED_LEN - 2 if cmd == P.CMD_SET_LED else None
+        return self._wired_get(wcmd, sub, asked, length, magic)
 
-    def _wait_ack(self, pkt: bytes) -> bool:
-        deadline = time.monotonic() + self.timeout
-        while time.monotonic() < deadline:
-            r = self._recv(0.3)
-            if not r:
-                continue
-            rep = P.parse_packet(r)
-            if rep is None or rep.cmd != pkt[1] or rep.index != pkt[3]:
-                continue
-            if rep.error:
-                raise AulaError(f"keyboard rejected command 0x{pkt[1]:02x}")
-            return True
-        return False
+    def _wired_get(self, wcmd: int, sub: int, asked: int, length: int,
+                   magic_at: int | None = None) -> bytes:
+        """One wired read; with magic_at the reply must carry 5a a5 there."""
+        for _ in range(3):
+            self.wait_keys_released()
+            self._ch.set_feature(P.wired_request(wcmd, sub, asked))
+            time.sleep(0.02)
+            reply = self._ch.get_feature(P.WIRED_REPORT_ID, P.WIRED_REPORT_LEN)
+            data = P.wired_reply(reply, wcmd, sub, length)
+            # while busy the firmware can answer with a truncated, mostly-zero block
+            if data is not None and (magic_at is None
+                                     or data[magic_at:magic_at + 2] == P.LED_MAGIC):
+                return data
+            time.sleep(0.1)
+        raise AulaError(f"read 0x{wcmd:02x} over the cable got no matching reply; try again")
+
+    def _wired_put(self, wcmd: int, data: bytes, read_back) -> None:
+        """Send one wired write, wait, then read back: it has to match byte for byte."""
+        self.wait_keys_released()
+        self._ch.set_feature(P.wired_write_report(wcmd, 0, data))
+        self._last_write = time.monotonic()
+        time.sleep(P.WIRED_SETTLE)
+        try:
+            back = read_back()
+        except AulaError as e:
+            raise AulaError(f"write 0x{wcmd:02x} was sent but couldn't be checked ({e}); "
+                            "run 'aula info' to see what the keyboard has now") from None
+        if back != data:
+            raise AulaError(f"the keyboard didn't keep write 0x{wcmd:02x} "
+                            "(the read-back differs)")
+
+    def can_read(self, cmd: int) -> bool:
+        """Whether this table can be read on the current connection."""
+        return cmd in READ_COMMANDS and (self.mode != "wired" or cmd in P.WIRED_READS)
+
+    def write(self, cmd: int, data: bytes, sub: int = 0) -> None:
+        """Store data on the keyboard. Refused unless the command is a known write and
+        the keyboard is on the cable (see WIRELESS_WRITE_REFUSED).
+
+        The old packet writes over the dongle and Bluetooth were removed on purpose.
+        Over the cable the LED block, the effect palettes and the per-key colors can be
+        written so far.
+        """
+        if cmd not in WRITE_COMMANDS:
+            raise AulaError(f"refused: 0x{cmd:02x} is not a known write command")
+        if self.mode != "wired":
+            raise AulaError(WIRELESS_WRITE_REFUSED)
+        if cmd == P.CMD_SET_LED and sub == 0:
+            return self._wired_write_led(bytes(data))
+        if cmd == P.CMD_SET_PALETTE and sub == 0:
+            return self._wired_write_palette(bytes(data))
+        if cmd == P.CMD_SET_CUSTOM and sub == 0:
+            return self._wired_write_custom(bytes(data))
+        raise AulaError(WIRED_WRITE_MISSING)
+
+    def _wired_write_led(self, raw: bytes) -> None:
+        """Write the LED block over the cable, changing only bytes whose meaning is known.
+
+        The block is read over the cable first and only the bytes in P.LED_WRITABLE
+        (plus the new effect's own slot) may differ from it: a block read over another
+        connection, or a damaged one, is refused. Afterwards it is read back and has
+        to match byte for byte.
+        """
+        current = self._wired_read(P.CMD_SET_LED)
+        allowed = set(P.LED_WRITABLE)
+        try:
+            slot = P.LedConfig(raw)._off(raw[P.LED_EFFECT_OFFSET])
+            allowed |= {slot, slot + 1}
+        except ValueError:  # an effect without a settings slot
+            pass
+        changed = [i for i in range(P.LED_LEN) if raw[i] != current[i]]
+        unknown = [i for i in changed if i not in allowed]
+        if unknown:
+            raise AulaError(f"refused: the write would change LED bytes {unknown}, "
+                            "whose meaning is unknown")
+        if changed:
+            self._wired_put(P.WIRED_WRITE_LED, raw, lambda: self._wired_read(P.CMD_SET_LED))
+
+    def _wired_write_palette(self, raw: bytes) -> None:
+        """Write the effect palettes over the cable (command 0x0a, Dahuum/aula-studio).
+
+        The whole 512-byte page is read first; only the 490 palette bytes may change,
+        the rest (padding, the 5a a5 at 506 and what follows it) is sent back as read.
+        After the page, the unchanged LED block is sent once more, as the official app
+        does to apply it. Both are read back.
+        """
+        if len(raw) != P.PALETTE_LEN:
+            raise ValueError(f"effect palettes must be {P.PALETTE_LEN} bytes")
+        wcmd, asked = P.WIRED_READS[P.CMD_SET_PALETTE]
+        read_page = lambda: self._wired_get(wcmd, 0, asked, P.WIRED_PAGE, P.WIRED_PALETTE_MAGIC)
+        page = read_page()
+        new = raw + page[P.PALETTE_LEN:]
+        if new == page:
+            return
+        led = self._wired_read(P.CMD_SET_LED)
+        self._wired_put(P.WIRED_WRITE_PALETTE, new, read_page)
+        self._wired_put(P.WIRED_WRITE_LED, led, lambda: self._wired_read(P.CMD_SET_LED))
+
+    def _wired_write_custom(self, raw: bytes) -> None:
+        """Write the per-key color table over the cable, then commit the unchanged LED
+        block as the official app does; both are read back."""
+        if len(raw) != P.CUSTOM_LEN:
+            raise ValueError("per-key color table must be 378 bytes")
+        if raw == self._wired_read(P.CMD_SET_CUSTOM):
+            return
+        led = self._wired_read(P.CMD_SET_LED)
+        self._wired_put(P.WIRED_WRITE_CUSTOM, raw, lambda: self._wired_read(P.CMD_SET_CUSTOM))
+        self._wired_put(P.WIRED_WRITE_LED, led, lambda: self._wired_read(P.CMD_SET_LED))
 
     # ----------------------------------------------------------- high level
     def get_led(self) -> P.LedConfig:
         return P.LedConfig(self.read(P.CMD_SET_LED))
 
     def set_led(self, cfg: P.LedConfig) -> None:
-        self.write(P.CMD_SET_LED, cfg.to_bytes())
+        raw = cfg.to_bytes()
+        if len(raw) != P.LED_LEN or raw[-2:] != P.LED_MAGIC:
+            raise AulaError("refused: the LED block is damaged (it has to end in 5a a5)")
+        if cfg.sleep == 0:
+            # A keyboard that never sleeps drains its battery with the lights on
+            # (docs/protocol.md, "Safety"); the old keyboard ran like this for ~39 h.
+            raise AulaError("refused: sleep 'never' is not allowed; pick a sleep time")
+        self.write(P.CMD_SET_LED, raw)
 
     def get_custom(self) -> bytes:
         return self.read(P.CMD_SET_CUSTOM)
@@ -183,7 +309,22 @@ class Keyboard:
         loses the frame; P.LIVE_GAP keeps that rare. Without a new frame the
         keyboard returns to its own effect after about 2 seconds. Typing keeps
         working while frames stream (tested).
+
+        Not over Bluetooth (too slow, packets get lost), at most 20 frames a second
+        (faster starves the keyboard's key scanning) and at most P.LIVE_MAX bytes,
+        the longest frame the official app sends.
         """
+        if self.bluetooth:
+            raise AulaError("live animations don't run over Bluetooth; use the 2.4G dongle")
+        if self.mode == "wired":
+            raise AulaError("live animations over the cable are not supported yet")
+        if len(frame) > P.LIVE_MAX:
+            raise AulaError(f"refused: live frame of {len(frame)} bytes "
+                            f"(at most {P.LIVE_MAX})")
+        wait = self._last_live + LIVE_MIN_INTERVAL - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        self._last_live = time.monotonic()
         for pkt in P.split_packets(P.CMD_LIVE, P.LIVE_KEYS, frame):
             self._ch.write(pkt)
             time.sleep(P.LIVE_GAP)
@@ -203,6 +344,8 @@ class Keyboard:
         Read 100 while the keyboard's own Fn+B gauge showed 10/10; needs to be
         confirmed at a lower charge.
         """
+        if not self.can_read(P.CMD_PROFILE):
+            return None
         data = self.read(P.CMD_PROFILE)
         return data[0] if data and data[0] <= 100 else None
 
