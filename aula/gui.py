@@ -1142,8 +1142,8 @@ class AulaWindow(Gtk.Window):
             self.view.colors[idx] = rgb
         self.view.queue_draw()
         self.refresh_light()
-        self.ensure_custom_effect()
         self.send_custom(f"Colored {len(self.view.selected)} key(s)")
+        self.ensure_custom_effect()
 
     def on_color_picked(self, _button):
         dlg = Gtk.ColorChooserDialog(title="Paint selected keys", transient_for=self)
@@ -1219,8 +1219,9 @@ class AulaWindow(Gtk.Window):
         self.view.colors.update(T.render(preset))
         self.view.queue_draw()
         self.refresh_light()
-        self.ensure_custom_effect()
+        # colors first: they don't make the keyboard blink, switching the effect does (once)
         self.send_custom(f"Theme: {preset.name}")
+        self.ensure_custom_effect()
 
     # ------------------------------------------------------------- remap
     def on_clear_selection(self, _b):

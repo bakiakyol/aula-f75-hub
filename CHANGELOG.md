@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Live animations play over the cable too**: one 520-byte report per frame
+  (command 0x08, fixed header `06 08 00 00 01 00 7a 01`, from lumen75 /
+  cloudglides). Tested on hardware: typing normal, every table read back unchanged
+- Themes and painted keys blink less (once at most, only when switching to custom): the extra lighting-block
+  write after the per-key colors is gone (not needed, tested), and the colors go out
+  before the effect switches. The board still goes dark for a moment while the
+  firmware repaints
+
 - **Settings are written over the USB cable only.** Writes over the 2.4G dongle
   and Bluetooth were removed: radio packets get lost, and a radio write is known to
   have left another F75 unable to type until a firmware reflash. Reading, backups

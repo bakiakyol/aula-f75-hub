@@ -326,6 +326,25 @@ LED_WRITABLE = {LED_EFFECT_OFFSET, LED_WIN_LOCK_OFFSET, LED_SIDE_MODE_OFFSET,
                 LED_SLEEP_OFFSET, LED_KNOB_MODE_OFFSET, LED_OS_MODE_OFFSET}
 
 
+# Real-time frame over the cable: one report, R G B for each key at its matrix index;
+# keys left at 0 are dark. The header is exactly the one whiskey00/lumen75 (MIT) and
+# cloudglides/aula-f75-linux-drivers send; never vary it, because the official app also
+# uses command 0x08 to write the keyboard's memory. Tested here on 15 Nov 2026: 5 s at
+# 20 frames/s, typing normal, lighting/palette/per-key/keymaps read back unchanged.
+WIRED_LIVE_HEADER = bytes([WIRED_REPORT_ID, 0x08, 0x00, 0x00, 0x01, 0x00, 0x7A, 0x01])
+WIRED_LIVE_KEYS = 122
+
+
+def wired_live_report(frame: bytes) -> bytes:
+    """A real-time frame (live_frame's color groups) as one wired report."""
+    report = bytearray(WIRED_REPORT_LEN)
+    report[:WIRED_HEADER] = WIRED_LIVE_HEADER
+    for idx, rgb in colors_from_live(frame).items():
+        if idx < WIRED_LIVE_KEYS:
+            report[WIRED_HEADER + 3 * idx:WIRED_HEADER + 3 * idx + 3] = bytes(rgb)
+    return bytes(report)
+
+
 def wired_write_report(cmd: int, sub: int, data: bytes) -> bytes:
     if len(data) > WIRED_REPORT_LEN - WIRED_HEADER:
         raise ValueError("too much data for one wired report")

@@ -250,10 +250,20 @@ real keyboard):
 | Keymap | `0x83` (sub = layer) | – | 504 of a 512-byte page | write not used |
 | Effect palettes | `0x8a` | `0x0a` | 490 of a 512-byte page | `5a a5` at 506, then `00 10 00 00` |
 | Per-key colors | `0x86` | `0x06` | 378 (R×126, G×126, B×126) | shown with effect 32 |
+| Real-time frame | – | `0x08` | R G B per key at its matrix index (122 keys) | not stored, see below |
+
+Real-time frames over the cable are one report with the fixed header
+`06 08 00 00 01 00 7a 01` (from lumen75 / cloudglides; the official app also uses
+`0x08` to write memory, so the header is never varied). Tested 15 Nov 2026: 5 s
+at 20 frames/s, typing normal, and the lighting block, palettes, per-key colors and
+keymap layers 0-1 read back unchanged afterwards.
 
 Writes aren't acknowledged; each is checked by reading it back after ~0.4 s.
-After a palette or per-key write the unchanged lighting block is sent once more,
-as the official app does. About a second after a write the keyboard sends an
+After a palette write the unchanged lighting block is sent once more, as the
+official app does. After a per-key write it isn't: the colors show at once without
+it (tested), and every lighting-block write makes the board blink once. A per-key
+write itself makes the board go dark for a moment while the firmware repaints;
+no way around that is known. About a second after a write the keyboard sends an
 8-byte input report `06 0a 07 00 …` on the same collection (meaning unknown).
 `0x88`, `0x8b`, `0x8e`, `0x91` return firmware code and are never sent; wired
 `0x06` is not the wireless factory reset. Sources: lumen75, aula-studio, F75 Studio,

@@ -57,7 +57,7 @@ keyboard.
 
 | Platform | Status | Guide |
 |---|---|---|
-| **Linux** | ✅ **Stable.** Verified on a real keyboard. Settings are written over the USB cable; the 2.4G dongle and Bluetooth read, back up and (dongle) play animations | [Installation](#installation) |
+| **Linux** | ✅ **Stable.** Verified on a real keyboard. Settings are written over the USB cable; animations play over the cable and the 2.4G dongle; the dongle and Bluetooth read and back up | [Installation](#installation) |
 | **macOS** | 🧪 **Being tested**, on the [`port-macos`](https://github.com/bakiakyol/aula-f75-hub/tree/port-macos) branch. **2.4G dongle:** 19 of 21 checks passed on macOS 27 (Apple silicon), GUI included. **Bluetooth:** settings can't be read, because macOS loses part of every reply from the keyboard; use the dongle for settings (typing over Bluetooth works as usual). **Known issue:** macros on the Fn layer don't run while the keyboard is in Mac mode (Fn+E); being looked into | [docs/macos.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-macos/docs/macos.md) |
 | **Windows** | 🧪 **Ready for testing**, on the [`port-windows`](https://github.com/bakiakyol/aula-f75-hub/tree/port-windows) branch. Passes the automated tests on Windows, not tried on a real keyboard yet | [docs/windows.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-windows/docs/windows.md) |
 
@@ -78,7 +78,7 @@ firmware was reflashed. Reading, backups and live animations still work wireless
 
 | Keyboard | Connection | Read | Write |
 |---|---|---|---|
-| AULA F75 | Cable (`258a:010c`) | ✅ lighting, palettes, per-key colors, keymaps (not macros yet) | ✅ lighting block, effect colors, per-key colors |
+| AULA F75 | Cable (`258a:010c`) | ✅ lighting, palettes, per-key colors, keymaps (not macros yet) | ✅ lighting block, effect colors, per-key colors; ✅ live animations |
 | AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ everything | ❌ by design; ✅ live animations |
 | AULA F75 | Bluetooth (`3554:fa07`) | ✅ everything (slow) | ❌ by design |
 | Other AULA models | – | ❓ Unknown. Please [report](../../issues/new/choose) | |
@@ -202,8 +202,8 @@ aula animate fire --speed 1.5 --seconds 60
 They run only while the GUI (or `aula animate`) is open. About 2 seconds after
 they stop, the keyboard shows its own effect again. Nothing is saved on it, so they
 don't wear out its memory, and typing works as usual meanwhile. They run over the
-2.4G dongle only (not over Bluetooth, not over the cable yet), at most 20 frames a
-second: faster starves the keyboard's key scanning.
+cable and the 2.4G dongle (not over Bluetooth), at most 20 frames a second: faster
+starves the keyboard's key scanning.
 
 ### Macros
 
@@ -381,7 +381,9 @@ handful of blocks: a 128-byte lighting block, a 504-byte keymap per layer, and a
 The wired protocol was learned from these open-source projects (no code was copied):
 
 - [whiskey00/lumen75](https://github.com/whiskey00/lumen75) (MIT): the wired
-  feature-report framing and the keymap, lighting and palette reads.
+  feature-report framing, the keymap, lighting and palette reads, and the wired
+  real-time frame header (from
+  [cloudglides/aula-f75-linux-drivers](https://github.com/cloudglides/aula-f75-linux-drivers)).
 - [Dahuum/aula-studio](https://github.com/Dahuum/aula-studio) (MIT): the palette
   (`0x0a`) and per-key color (`0x06`/`0x86`) commands and the official write order.
 - [trenbolone1122/aula-f75-linux](https://github.com/trenbolone1122/aula-f75-linux)

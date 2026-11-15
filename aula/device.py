@@ -270,15 +270,17 @@ class Keyboard:
         self._wired_put(P.WIRED_WRITE_LED, led, lambda: self._wired_read(P.CMD_SET_LED))
 
     def _wired_write_custom(self, raw: bytes) -> None:
-        """Write the per-key color table over the cable, then commit the unchanged LED
-        block as the official app does; both are read back."""
+        """Write the per-key color table over the cable; it is read back.
+
+        The official app commits the unchanged LED block afterwards, but that isn't
+        needed: the colors show at once without it (tested on a real keyboard), and
+        every LED block write makes the keyboard blink once.
+        """
         if len(raw) != P.CUSTOM_LEN:
             raise ValueError("per-key color table must be 378 bytes")
         if raw == self._wired_read(P.CMD_SET_CUSTOM):
             return
-        led = self._wired_read(P.CMD_SET_LED)
         self._wired_put(P.WIRED_WRITE_CUSTOM, raw, lambda: self._wired_read(P.CMD_SET_CUSTOM))
-        self._wired_put(P.WIRED_WRITE_LED, led, lambda: self._wired_read(P.CMD_SET_LED))
 
     # ----------------------------------------------------------- high level
     def get_led(self) -> P.LedConfig:
@@ -310,14 +312,15 @@ class Keyboard:
         keyboard returns to its own effect after about 2 seconds. Typing keeps
         working while frames stream (tested).
 
+        Over the cable the same frame goes out as one feature report
+        (P.wired_live_report) with a fixed header.
+
         Not over Bluetooth (too slow, packets get lost), at most 20 frames a second
         (faster starves the keyboard's key scanning) and at most P.LIVE_MAX bytes,
         the longest frame the official app sends.
         """
         if self.bluetooth:
             raise AulaError("live animations don't run over Bluetooth; use the 2.4G dongle")
-        if self.mode == "wired":
-            raise AulaError("live animations over the cable are not supported yet")
         if len(frame) > P.LIVE_MAX:
             raise AulaError(f"refused: live frame of {len(frame)} bytes "
                             f"(at most {P.LIVE_MAX})")
@@ -325,6 +328,12 @@ class Keyboard:
         if wait > 0:
             time.sleep(wait)
         self._last_live = time.monotonic()
+        if self.mode == "wired":
+            report = P.wired_live_report(frame)
+            if report[:P.WIRED_HEADER] != P.WIRED_LIVE_HEADER:   # never another command
+                raise AulaError("refused: wrong header for a live frame")
+            self._ch.set_feature(report)
+            return
         for pkt in P.split_packets(P.CMD_LIVE, P.LIVE_KEYS, frame):
             self._ch.write(pkt)
             time.sleep(P.LIVE_GAP)

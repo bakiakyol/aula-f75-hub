@@ -57,7 +57,7 @@ ayarları orada bile çalışmadı. Bu proje klavyeyle doğrudan, HID ayar kanal
 
 | Platform | Durum | Rehber |
 |---|---|---|
-| **Linux** | ✅ **Kararlı.** Gerçek klavyede doğrulandı. Ayarlar USB kablosuyla yazılır; 2.4G dongle ve Bluetooth okuma, yedek ve (dongle'da) animasyon içindir | [Kurulum](#kurulum) |
+| **Linux** | ✅ **Kararlı.** Gerçek klavyede doğrulandı. Ayarlar USB kablosuyla yazılır; animasyonlar kabloda ve 2.4G dongle'da oynar; dongle ve Bluetooth okuma ve yedek içindir | [Kurulum](#kurulum) |
 | **macOS** | 🧪 **Test ediliyor**, [`port-macos`](https://github.com/bakiakyol/aula-f75-hub/tree/port-macos) dalında. **2.4G dongle:** macOS 27'de (Apple silicon) 21 kontrolün 19'u geçti, arayüz dahil. **Bluetooth:** ayarlar okunamıyor, çünkü macOS klavyenin her cevabının bir kısmını kaybediyor; ayarlar için dongle kullan (Bluetooth'la yazmak normal çalışır). **Bilinen sorun:** klavye Mac modundayken (Fn+E) Fn katmanındaki makrolar çalışmıyor; inceleniyor | [docs/macos.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-macos/docs/macos.md) |
 | **Windows** | 🧪 **Teste hazır**, [`port-windows`](https://github.com/bakiakyol/aula-f75-hub/tree/port-windows) dalında. Windows'ta otomatik testleri geçiyor, henüz gerçek klavyede denenmedi | [docs/windows.md](https://github.com/bakiakyol/aula-f75-hub/blob/port-windows/docs/windows.md) |
 
@@ -79,7 +79,7 @@ gönderemez hale getirdiği biliniyor. Okuma, yedek ve canlı animasyonlar kablo
 
 | Klavye | Bağlantı | Okuma | Yazma |
 |---|---|---|---|
-| AULA F75 | Kablo (`258a:010c`) | ✅ ışık, paletler, tuş renkleri, tuş haritası (makrolar henüz değil) | ✅ ışık bloğu, efekt renkleri, tuş renkleri |
+| AULA F75 | Kablo (`258a:010c`) | ✅ ışık, paletler, tuş renkleri, tuş haritası (makrolar henüz değil) | ✅ ışık bloğu, efekt renkleri, tuş renkleri; ✅ canlı animasyon |
 | AULA F75 | 2.4G dongle (`3554:fa09`) | ✅ hepsi | ❌ bilerek kapalı; ✅ canlı animasyon |
 | AULA F75 | Bluetooth (`3554:fa07`) | ✅ hepsi (yavaş) | ❌ bilerek kapalı |
 | Diğer AULA modelleri | – | ❓ Bilinmiyor. Lütfen [bildir](../../issues/new/choose) | |
@@ -207,8 +207,8 @@ aula animate fire --speed 1.5 --seconds 60
 
 Sadece arayüz (ya da `aula animate`) açıkken çalışırlar. Durduktan yaklaşık 2 saniye
 sonra klavye kendi efektine döner. Klavyeye hiçbir şey kaydedilmediği için hafızasını
-yıpratmazlar, bu sırada yazı yazmak da normal çalışır. Sadece 2.4G dongle'da
-çalışırlar (Bluetooth'ta değil, kabloda henüz değil), saniyede en fazla 20 kare:
+yıpratmazlar, bu sırada yazı yazmak da normal çalışır. Kabloda ve 2.4G
+dongle'da çalışırlar (Bluetooth'ta değil), saniyede en fazla 20 kare:
 daha hızlısı klavyenin tuş taramasını aksatıyor.
 
 ### Makrolar
@@ -386,7 +386,8 @@ blokta tutuluyor: 128 baytlık ışık bloğu, katman başına 504 baytlık tuş
 Kablolu protokol şu açık kaynak projelerden öğrenildi (kod kopyalanmadı):
 
 - [whiskey00/lumen75](https://github.com/whiskey00/lumen75) (MIT): kablolu feature
-  rapor çerçevesi; tuş haritası, ışık ve palet okumaları.
+  rapor çerçevesi; tuş haritası, ışık ve palet okumaları; kablolu canlı kare başlığı
+  ([cloudglides/aula-f75-linux-drivers](https://github.com/cloudglides/aula-f75-linux-drivers)'tan).
 - [Dahuum/aula-studio](https://github.com/Dahuum/aula-studio) (MIT): palet (`0x0a`)
   ve tuş renk (`0x06`/`0x86`) komutları ve resmi yazma sırası.
 - [trenbolone1122/aula-f75-linux](https://github.com/trenbolone1122/aula-f75-linux)

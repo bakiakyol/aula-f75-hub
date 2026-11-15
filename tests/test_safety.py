@@ -88,12 +88,31 @@ class WriteRules(unittest.TestCase):
 class LiveRules(unittest.TestCase):
     frame = P.live_frame({(255, 0, 0): [1, 2, 3]})
 
-    def test_not_over_bluetooth_or_cable(self):
-        for mode in ("Bluetooth", "wired"):
-            kb = keyboard(mode)
-            with self.assertRaises(AulaError):
-                kb.send_live(self.frame)
-            self.assertEqual(kb._ch.sent, [])
+    def test_not_over_bluetooth(self):
+        kb = keyboard("Bluetooth")
+        with self.assertRaises(AulaError):
+            kb.send_live(self.frame)
+        self.assertEqual(kb._ch.sent, [])
+
+    def test_over_cable_one_report_with_the_fixed_header(self):
+        kb = keyboard("wired")
+        kb._ch = FakeFeature({})
+        kb.send_live(self.frame)
+        self.assertEqual(len(kb._ch.sets), 1)
+        report = kb._ch.sets[0]
+        self.assertEqual(len(report), P.WIRED_REPORT_LEN)
+        self.assertEqual(report[:8], bytes.fromhex("0608000001007a01"))
+        for idx in range(P.WIRED_LIVE_KEYS):
+            want = (255, 0, 0) if idx in (1, 2, 3) else (0, 0, 0)
+            self.assertEqual(tuple(report[8 + 3 * idx:11 + 3 * idx]), want)
+        self.assertEqual(set(report[8 + 3 * P.WIRED_LIVE_KEYS:]), {0})
+
+    def test_size_limit_over_cable_too(self):
+        kb = keyboard("wired")
+        kb._ch = FakeFeature({})
+        with self.assertRaises(AulaError):
+            kb.send_live(b"\x01" * (P.LIVE_MAX + 1))
+        self.assertEqual(kb._ch.sets, [])
 
     def test_frame_size_limit(self):
         kb = keyboard("2.4G dongle")
@@ -216,14 +235,14 @@ class WiredWrites(unittest.TestCase):
                 call()
         self.assertEqual(self.kb._ch.sets, [])
 
-    def test_per_key_then_led_commit(self):
+    def test_per_key_without_led_commit(self):
+        # an LED block write makes the keyboard blink, and the colors show without it
         self.kb._ch.tables[(0x86, 0)] = bytes(P.CUSTOM_LEN)
         table = P.custom_from_colors({0: (255, 0, 0)})
         self.kb.set_custom(table)
         w = [r for r in self.kb._ch.sets if r[1] in (P.WIRED_WRITE_CUSTOM, P.WIRED_WRITE_LED)]
-        self.assertEqual([r[1] for r in w], [P.WIRED_WRITE_CUSTOM, P.WIRED_WRITE_LED])
+        self.assertEqual([r[1] for r in w], [P.WIRED_WRITE_CUSTOM])
         self.assertEqual(w[0][:8], bytes.fromhex("060600000100" "7a01"))
-        self.assertEqual(w[1][8:8 + P.LED_LEN], self.stored.to_bytes())
         self.assertEqual(self.kb.get_custom(), table)
 
 
